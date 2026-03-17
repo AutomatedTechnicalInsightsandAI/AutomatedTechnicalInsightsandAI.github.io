@@ -22,11 +22,14 @@ keyword = st.text_input(
 run_audit = st.button("Run SEO Audit")
 
 
+HEADERS = {"User-Agent": "ATI-SEO-AuditBot/1.0 (+https://automatedtechnicalinsightsandai.github.io)"}
+
+
 def perform_seo_audit(website, keyword=None):
     try:
-        response = requests.get(website, timeout=10)
-    except Exception as exc:
-        return {"Error": f"Failed to reach {website}. Reason: {exc}"}
+        response = requests.get(website, timeout=10, headers=HEADERS)
+    except requests.RequestException as exc:
+        return {"Error": f"Failed to reach {website}. Reason: {str(exc)}"}
 
     accessible = response.status_code == 200
     insights = {
@@ -58,25 +61,34 @@ def perform_seo_audit(website, keyword=None):
             "✅ Yes" if kw in desc_text.lower() else "❌ No — consider adding it"
         )
 
-    # Check top MAX_LINKS_TO_CHECK links for broken ones (free-tier limit)
-    all_links = [
+    # Check top MAX_LINKS_TO_CHECK http/https links for broken ones (free-tier limit)
+    raw_links = [
         urljoin(website, a["href"])
         for a in soup.find_all("a", href=True)
-        if a["href"] and not a["href"].startswith("#")
+        if a["href"]
+        and not a["href"].startswith(("#", "mailto:", "javascript:", "tel:"))
     ]
-    sampled_links = list(dict.fromkeys(all_links))[:MAX_LINKS_TO_CHECK]
+    # Deduplicate while preserving order, then keep only absolute http(s) URLs
+    seen: set = set()
+    sampled_links = []
+    for link in raw_links:
+        if link not in seen and link.startswith(("http://", "https://")):
+            seen.add(link)
+            sampled_links.append(link)
+            if len(sampled_links) == MAX_LINKS_TO_CHECK:
+                break
 
     broken = []
     for link in sampled_links:
         try:
-            link_resp = requests.head(link, timeout=5, allow_redirects=True)
+            link_resp = requests.head(link, timeout=5, allow_redirects=True, headers=HEADERS)
             if link_resp.status_code == 405:
                 # Some servers don't support HEAD; fall back to GET
-                link_resp = requests.get(link, timeout=5, allow_redirects=True)
+                link_resp = requests.get(link, timeout=5, allow_redirects=True, headers=HEADERS)
             if link_resp.status_code >= 400:
                 broken.append(f"{link}  (HTTP {link_resp.status_code})")
-        except Exception:
-            broken.append(f"{link}  (unreachable)")
+        except requests.RequestException as exc:
+            broken.append(f"{link}  (unreachable: {str(exc)})")
 
     insights[f"Broken Links (top {MAX_LINKS_TO_CHECK} sampled)"] = (
         broken if broken else "✅ None found"
