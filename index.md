@@ -21,7 +21,7 @@ Developing deep-learning computer vision models to transform passive camera moni
     <div class="container">
         <h2>Free SEO Audit</h2>
         <p>Uncover low-hanging SEO opportunities for your website using our Free SEO Audit Tool!</p>
-        <a href="https://automatedtechnicalinsightsandaiappio-csbpdxg8nrnc5nfp3v9nm.streamlit.app" class="btn">
+        <a href="https://automatedtechnicalinsightsandaiappio-csbpdxg8nrnc5nfp3v9nmn.streamlit.app" class="btn">
             Launch SEO Audit Now
         </a>
     </div>
