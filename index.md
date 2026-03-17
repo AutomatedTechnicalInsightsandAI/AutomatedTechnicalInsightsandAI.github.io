@@ -16,4 +16,12 @@ Advanced integration and synchronization for mission-critical Video Management S
 Developing deep-learning computer vision models to transform passive camera monitoring into active security intelligence.
 
 ---
+
+## 🔍 Free SEO Audit
+
+Not ranking on page one? Our free SEO audit tool scans your website in seconds and surfaces the quick wins that move you from page two to page one — meta tags, keyword gaps, and broken links, all in one report.
+
+<a href="https://your-app-name.streamlit.app/" class="btn-modern">Get My Free SEO Audit →</a>
+
+---
 [Contact the Portal](/contact)
