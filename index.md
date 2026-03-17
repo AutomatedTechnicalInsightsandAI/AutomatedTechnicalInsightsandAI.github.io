@@ -17,11 +17,15 @@ Developing deep-learning computer vision models to transform passive camera moni
 
 ---
 
-## 🔍 Free SEO Audit
-
-Not ranking on page one? Our free SEO audit tool scans your website in seconds and surfaces the quick wins that move you from page two to page one — meta tags, keyword gaps, and broken links, all in one report.
-
-<a href="https://your-app-name.streamlit.app/" class="btn-modern">Get My Free SEO Audit →</a>
+<section id="seo-audit">
+    <div class="container">
+        <h2>Free SEO Audit</h2>
+        <p>Uncover low-hanging SEO opportunities for your website using our Free SEO Audit Tool!</p>
+        <a href="https://automatedtechnicalinsightsandaiappio-csbpdxg8nrnc5nfp3v9nm.streamlit.app" class="btn">
+            Launch SEO Audit Now
+        </a>
+    </div>
+</section>
 
 ---
 [Contact the Portal](/contact)
