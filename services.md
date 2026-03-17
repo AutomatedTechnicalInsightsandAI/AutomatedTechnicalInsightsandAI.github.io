@@ -1,19 +1,22 @@
 ---
 layout: page
-title: Solutions Portfolio
+title: Enterprise Solutions
 ---
 
-<div class="service-card merchant-accent">
-  <h2>💳 Merchant POS Solutions</h2>
-  <p>Optimizing payment ecosystems through strategic hardware integration and transaction security audits.</p>
+<div class="solution-card">
+  <span class="badge badge-pos">Operational Efficiency</span>
+  <h2>Merchant POS Solutions</h2>
+  <p>Strategic payment infrastructure for high-volume environments. We audit and optimize POS ecosystems to secure transaction flow and minimize processing friction through our partnership with <strong>Beacon Payments</strong>.</p>
 </div>
 
-<div class="service-card vms-accent">
-  <h2>🔌 VMS Infrastructure</h2>
-  <p>Full-scale maintenance and synchronization of existing Video Management Systems to ensure 100% uptime.</p>
+<div class="solution-card">
+  <span class="badge badge-vms">Infrastructure</span>
+  <h2>VMS Integration & Maintenance</h2>
+  <p>Ensuring 24/7 reliability for mission-critical Video Management Systems. We specialize in synchronizing legacy hardware with modern network protocols to prevent data loss and system downtime.</p>
 </div>
 
-<div class="service-card ai-accent">
-  <h2>👁️ Intelligence Layer</h2>
-  <p><em>Phase 2 Development:</em> Implementing proprietary computer vision models into legacy camera hardware.</p>
+<div class="solution-card">
+  <span class="badge badge-ai">Phase 2 Development</span>
+  <h2>Intelligence Layer Integration</h2>
+  <p>Transforming passive monitoring into proactive security. Our upcoming AI deployment model allows facilities to implement advanced computer vision and behavioral analytics onto their existing camera networks.</p>
 </div>
