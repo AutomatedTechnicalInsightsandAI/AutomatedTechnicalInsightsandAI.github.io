@@ -1,0 +1,50 @@
+---
+---
+@import 'jekyll-theme-midnight';
+
+/* Global Branding */
+body {
+    background-color: #0b0e14;
+    color: #cfd8dc;
+    font-family: 'Inter', -apple-system, sans-serif;
+}
+
+header {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-bottom: 3px solid #007bff;
+    padding: 2rem 0;
+}
+
+/* Services Page Styling - Clean Grid Look */
+.service-card {
+    border-left: 4px solid #00d4ff;
+    background: #161b22;
+    padding: 20px;
+    margin: 15px 0;
+    border-radius: 0 8px 8px 0;
+}
+
+.merchant-accent { color: #2ecc71; border-color: #2ecc71; }
+.vms-accent { color: #00d4ff; border-color: #00d4ff; }
+.ai-accent { color: #a855f7; border-color: #a855f7; }
+
+/* Contact Page Styling - Professional Portal */
+.contact-container {
+    background: #111827;
+    border: 1px solid #374151;
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.btn-contact {
+    background: linear-gradient(90deg, #007bff, #00d4ff);
+    color: white !important;
+    font-weight: bold;
+    padding: 15px 30px;
+    border-radius: 50px;
+    display: inline-block;
+    transition: transform 0.2s;
+}
+
+.btn-contact:hover { transform: scale(1.05); }
