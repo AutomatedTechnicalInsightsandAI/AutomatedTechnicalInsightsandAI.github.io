@@ -2,81 +2,82 @@
 ---
 @import 'jekyll-theme-midnight';
 
-/* Global Professional Theme */
+/* Global Reset & Corporate Color Palette */
 :root {
-    --bg-dark: #080a0f;
-    --card-bg: #11141d;
-    --accent-blue: #007bff;
-    --accent-cyan: #00d4ff;
-    --accent-purple: #a855f7;
-    --text-main: #e2e8f0;
-    --text-dim: #94a3b8;
+    --bg-main: #0a0c10;
+    --bg-card: #12151e;
+    --accent: #007bff;
+    --accent-glow: rgba(0, 123, 255, 0.4);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border: #1e293b;
 }
 
 body {
-    background-color: var(--bg-dark);
-    color: var(--text-main);
-    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.6;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.7;
+    margin: 0;
 }
 
-/* High-End Header */
+/* Modern Header with Depth */
 header {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    border-bottom: 3px solid var(--accent-blue);
-    padding: 3rem 0;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-}
-
-/* Glassmorphism Service Cards */
-.solution-card {
-    background: var(--card-bg);
-    border: 1px solid #1e293b;
-    border-radius: 12px;
-    padding: 2.5rem;
-    margin-bottom: 2rem;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.solution-card:hover {
-    border-color: var(--accent-blue);
-    transform: translateY(-5px);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-}
-
-.badge {
-    display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 0.75rem;
-    font-weight: bold;
-    text-transform: uppercase;
-    margin-bottom: 1rem;
-}
-
-.badge-vms { background: rgba(0, 212, 255, 0.1); color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
-.badge-pos { background: rgba(46, 204, 113, 0.1); color: #2ecc71; border: 1px solid #2ecc71; }
-.badge-ai { background: rgba(168, 85, 247, 0.1); color: var(--accent-purple); border: 1px solid var(--accent-purple); }
-
-/* Corporate Inquiry Portal */
-.inquiry-box {
-    max-width: 600px;
-    margin: 4rem auto;
-    background: linear-gradient(180deg, #111827 0%, #080a0f 100%);
-    border: 1px solid #334155;
-    padding: 3rem;
-    border-radius: 16px;
+    background: linear-gradient(180deg, #0f172a 0%, var(--bg-main) 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 60px 20px;
     text-align: center;
 }
 
-.btn-portal {
-    background: linear-gradient(90deg, #007bff, #00d4ff);
+/* Solution Cards - The "Product" Feel */
+.solution-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.solution-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 24px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    position: relative;
+    overflow: hidden;
+}
+
+.solution-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 30px var(--accent-glow);
+    transform: translateY(-8px);
+}
+
+.solution-card h2 {
+    color: var(--accent);
+    margin-top: 0;
+    font-size: 1.5rem;
+    letter-spacing: -0.5px;
+}
+
+/* Call to Action - Conversion Focus */
+.cta-section {
+    background: linear-gradient(90deg, #001e3c 0%, #000a14 100%);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 50px;
+    text-align: center;
+    margin-top: 60px;
+}
+
+.btn-primary {
+    background: var(--accent);
     color: white !important;
-    padding: 18px 40px;
-    border-radius: 8px;
+    padding: 16px 36px;
+    border-radius: 12px;
     text-decoration: none;
     font-weight: 700;
-    letter-spacing: 1px;
+    font-size: 1.1rem;
     display: inline-block;
+    box-shadow: 0 4px 14px 0 rgba(0, 123, 255, 0.39);
 }
