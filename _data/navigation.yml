@@ -1,9 +1,7 @@
 
-- name: Home
-  link: /
 - name: Services
   link: /services
 - name: Portfolio
   link: /portfolio
 - name: Contact
-  link: /contact
+  link: https://calendly.com/automated-technical-insights/new-meeting

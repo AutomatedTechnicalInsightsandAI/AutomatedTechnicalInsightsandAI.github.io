@@ -2235,8 +2235,14 @@ st.markdown('<p class="section-label">Select a Service</p>', unsafe_allow_html=T
 
 SERVICES = [
     {
-        "key":   "audit",
+        "key":   "instant_audit",
         "icon":  "🔍",
+        "name":  "Instant Social Audit",
+        "desc":  "Is that influencer worth the spend? Enter any Instagram handle for real-time engagement rates, audience authenticity, and growth trends.",
+    },
+    {
+        "key":   "audit",
+        "icon":  "🌐",
         "name":  "Free SEO Audit",
         "desc":  "15-point instant analysis of any webpage — score, issues, and fixes.",
     },
@@ -2269,12 +2275,6 @@ SERVICES = [
         "icon":  "🔎",
         "name":  "Influencer Discovery",
         "desc":  "Search, filter, and score influencers across Instagram, TikTok, YouTube & LinkedIn.",
-    },
-    {
-        "key":   "campaign_mgmt",
-        "icon":  "📣",
-        "name":  "Campaign Management",
-        "desc":  "Create campaigns, link influencers, track reach, ROI, and performance metrics.",
     },
     {
         "key":   "influencer_scorecard",
@@ -2686,133 +2686,126 @@ elif active == "influencer_discovery":
                                                        inf.get('tier', '')))
                 cols[5].metric("Score", f"{sc.get('overall_score', 0):.1f}/100")
 
-# ── Service: Campaign Management ─────────────────────────────────────────────
-elif active == "campaign_mgmt":
-    import database as _db
-    from influencer_metrics import build_campaign_performance, calculate_roi
-    from report_generator import generate_campaign_roi_report
+# ── Service: Instant Social Audit ────────────────────────────────────────────
+elif active == "instant_audit":
+    from instagram_audit import analyze_instagram_profile
 
-    _db.init_db()
-
-    st.markdown("### 📣 Campaign Management")
+    st.markdown("### 🔍 Instant Social Audit")
     st.caption(
-        "Create influencer campaigns, link creators, and track performance metrics "
-        "including reach, impressions, clicks, conversions, and ROI."
+        "Analyze any Instagram profile to make data-driven influencer booking decisions. "
+        "Stop guessing — get the data."
     )
 
-    tab_list, tab_create, tab_update = st.tabs(
-        ["📋 All Campaigns", "➕ New Campaign", "✏️ Update Metrics"]
+    username_input = st.text_input(
+        "Enter Instagram Handle",
+        placeholder="@username_here",
+        help="Type the influencer's Instagram username (with or without @)",
     )
 
-    with tab_create:
-        with st.form("new_campaign_form"):
-            c_name = st.text_input("Campaign Name", placeholder="Summer Launch 2026")
-            c_col1, c_col2 = st.columns(2)
-            with c_col1:
-                c_budget = st.number_input("Budget ($)", min_value=0.0, value=500.0, step=50.0)
-                c_start = st.date_input("Start Date")
-                c_expected_reach = st.number_input(
-                    "Expected Reach", min_value=0, value=50000, step=1000
+    if username_input:
+        with st.spinner("🔍 Analyzing profile…"):
+            results = analyze_instagram_profile(username_input)
+
+        clean_name = results["username"]
+        st.markdown(f"#### 📊 Results Snapshot — @{clean_name}")
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric(
+                "🎯 Authenticity",
+                f"{results['authenticity_score']}/100",
+                delta=f"{results['authenticity_trend']:+.1f}%",
+            )
+        with col2:
+            st.metric(
+                "💬 Engagement",
+                f"{results['engagement_rate']:.1f}%",
+                delta=f"{results['engagement_trend']:+.1f}%",
+            )
+        with col3:
+            st.metric(
+                "📈 Growth (90d)",
+                f"{results['growth_90d']:.1f}%",
+                delta=f"60d: {results['growth_60d']:.1f}%",
+            )
+        with col4:
+            score = results["authenticity_score"]
+            score_icon = "🟢" if score > 75 else ("🟡" if score > 50 else "🔴")
+            booking_label = "YES" if results["worth_booking"] else "NO"
+            st.metric("📊 Worth Booking?", f"{score_icon} {booking_label}")
+
+        st.markdown("---")
+
+        col_f, col_g = st.columns(2)
+        with col_f:
+            st.metric("👥 Followers", f"{results['followers']:,}")
+        with col_g:
+            st.metric("📸 Posts", f"{results['posts_count']:,}")
+
+        # Detailed breakdown tabs
+        tab_demos, tab_growth, tab_recs = st.tabs(
+            ["👥 Audience", "📈 Growth", "💡 Recommendations"]
+        )
+
+        with tab_demos:
+            st.markdown("**Audience Demographics**")
+            demos = results["demographics"]
+
+            d_col1, d_col2 = st.columns(2)
+            with d_col1:
+                st.markdown("**Age Groups**")
+                for age, pct in demos["age_groups"].items():
+                    st.progress(pct / 100, text=f"{age}: {pct}%")
+            with d_col2:
+                st.markdown("**Gender Split**")
+                for gender, pct in demos["gender"].items():
+                    st.progress(pct / 100, text=f"{gender}: {pct}%")
+
+            st.markdown("**Top Locations**")
+            for country, pct in list(demos["locations"].items())[:4]:
+                st.progress(pct / 100, text=f"{country}: {pct}%")
+
+            st.markdown("**Top Interests**")
+            interest_tags = "  ".join(
+                [f"`{i}`" for i in demos["top_interests"]]
+            )
+            st.markdown(interest_tags)
+
+        with tab_growth:
+            st.markdown("**Follower Growth Timeline (90 Days)**")
+            timeline = results["growth_timeline"]
+            if timeline:
+                import pandas as pd
+                df_growth = pd.DataFrame(timeline)
+                df_growth = df_growth.rename(
+                    columns={"day": "Day", "followers": "Followers"}
                 )
-            with c_col2:
-                c_end = st.date_input("End Date")
-                c_status = st.selectbox(
-                    "Status", ["draft", "active", "paused", "completed"]
-                )
-            c_submit = st.form_submit_button("🚀 Create Campaign", type="primary")
-            if c_submit:
-                if not c_name:
-                    st.error("Campaign name is required.")
-                else:
-                    cid = _db.create_campaign(
-                        campaign_name=c_name,
-                        budget=float(c_budget),
-                        start_date=str(c_start),
-                        end_date=str(c_end),
-                        expected_reach=int(c_expected_reach),
-                        status=c_status,
-                    )
-                    st.success(f"✅ Campaign **{c_name}** created (ID: {cid}).")
+                st.line_chart(df_growth.set_index("Day")["Followers"])
 
-    with tab_list:
-        campaigns = _db.get_all_campaigns()
-        if not campaigns:
-            st.info("No campaigns yet. Create one in the 'New Campaign' tab.")
-        else:
-            for camp in campaigns:
-                with st.expander(
-                    f"📣 {camp['campaign_name']} — {camp['status'].title()} "
-                    f"| Budget: ${camp['budget']:,.0f}"
-                ):
-                    perf = build_campaign_performance(
-                        campaign_name=camp["campaign_name"],
-                        budget=camp.get("budget", 0),
-                        reach=camp.get("actual_reach", 0),
-                        impressions=camp.get("impressions", 0),
-                        clicks=camp.get("clicks", 0),
-                        conversions=camp.get("conversions", 0),
-                        revenue=camp.get("revenue", 0),
-                        start_date=camp.get("start_date", ""),
-                        end_date=camp.get("end_date", ""),
-                    )
-                    col_a, col_b, col_c, col_d, col_e = st.columns(5)
-                    col_a.metric("Reach", f"{perf['reach']:,}")
-                    col_b.metric("Impressions", f"{perf['impressions']:,}")
-                    col_c.metric("CTR", f"{perf['ctr']:.2f}%")
-                    col_d.metric("Conversions", f"{perf['conversions']:,}")
-                    col_e.metric(
-                        "ROI",
-                        f"{perf['roi']:.1f}%",
-                        delta=f"{perf['roi']:.1f}%",
-                        delta_color="normal",
-                    )
+            g_col1, g_col2, g_col3 = st.columns(3)
+            g_col1.metric("30-Day Growth", f"{results['growth_30d']:.1f}%")
+            g_col2.metric("60-Day Growth", f"{results['growth_60d']:.1f}%")
+            g_col3.metric("90-Day Growth", f"{results['growth_90d']:.1f}%")
 
-                    influencers_in_camp = _db.get_campaign_influencers(camp["id"])
-                    if st.button(
-                        f"📊 Download HTML Report",
-                        key=f"dl_camp_{camp['id']}"
-                    ):
-                        html = generate_campaign_roi_report(camp, influencers_in_camp)
-                        st.download_button(
-                            "⬇️ Save Report",
-                            data=html,
-                            file_name=f"campaign_{camp['id']}_report.html",
-                            mime="text/html",
-                            key=f"save_camp_{camp['id']}",
-                        )
+        with tab_recs:
+            st.markdown("**AI-Driven Recommendations**")
+            for rec in results["recommendations"]:
+                st.markdown(rec)
+            st.info(
+                "💡 Data shown is AI-estimated for demo purposes. "
+                "Connect a live Instagram API for real-time data."
+            )
 
-    with tab_update:
-        campaigns = _db.get_all_campaigns()
-        if not campaigns:
-            st.info("No campaigns yet.")
-        else:
-            camp_options = {c["campaign_name"]: c["id"] for c in campaigns}
-            sel_camp_name = st.selectbox("Select Campaign", list(camp_options.keys()))
-            sel_camp_id = camp_options[sel_camp_name]
-            with st.form("update_metrics_form"):
-                u_col1, u_col2 = st.columns(2)
-                with u_col1:
-                    u_reach = st.number_input("Actual Reach", min_value=0, value=0)
-                    u_impressions = st.number_input("Impressions", min_value=0, value=0)
-                    u_clicks = st.number_input("Clicks", min_value=0, value=0)
-                with u_col2:
-                    u_conversions = st.number_input("Conversions", min_value=0, value=0)
-                    u_revenue = st.number_input("Revenue Generated ($)", min_value=0.0, value=0.0)
-                    u_status = st.selectbox(
-                        "Update Status", ["", "draft", "active", "paused", "completed"]
-                    )
-                u_submit = st.form_submit_button("✅ Update Campaign", type="primary")
-                if u_submit:
-                    _db.update_campaign_metrics(
-                        campaign_id=sel_camp_id,
-                        actual_reach=u_reach or None,
-                        impressions=u_impressions or None,
-                        clicks=u_clicks or None,
-                        conversions=u_conversions or None,
-                        revenue=u_revenue or None,
-                        status=u_status or None,
-                    )
-                    st.success(f"✅ Campaign '{sel_camp_name}' updated.")
+        # Download audit report
+        if st.button("📥 Generate Audit Report"):
+            import json
+            report_data = json.dumps(results, indent=2, default=str)
+            st.download_button(
+                label="⬇️ Download JSON Report",
+                data=report_data,
+                file_name=f"audit_{clean_name}.json",
+                mime="application/json",
+            )
 
 # ── Service: Influencer Scorecard ─────────────────────────────────────────────
 elif active == "influencer_scorecard":
