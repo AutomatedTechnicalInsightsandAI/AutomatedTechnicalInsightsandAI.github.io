@@ -2782,6 +2782,7 @@ elif active == "instant_audit":
                 )
                 st.line_chart(df_growth.set_index("Day")["Followers"])
 
+
 # ── Service: Influencer Scorecard ─────────────────────────────────────────────
 elif active == "influencer_scorecard":
     import database as _db
