@@ -5,6 +5,7 @@
 /* Fix Readability for Midnight Theme */
 body {
     color: #e6f1ff !important;
+    background: #0d2137 !important;
 }
 
 h1, h2, h3, p, li {
@@ -33,3 +34,25 @@ h1, h2, h3, p, li {
     box-shadow: 0 0 15px rgba(0, 123, 255, 0.6);
     transform: translateY(-2px);
 }
+
+/* ── Services Page Premium Design ──────────────────────────────────────────── */
+
+/* Remove theme wrapper constraints on services page */
+.inner {
+    max-width: 1200px !important;
+}
+
+/* Ensure card text is legible over dark backgrounds */
+.svc-card h1,
+.svc-card h2,
+.svc-card h3,
+.svc-card p,
+.svc-card li {
+    color: inherit !important;
+}
+
+/* Remove old solution-card styles */
+.solution-card {
+    display: none;
+}
+

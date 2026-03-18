@@ -727,3 +727,29 @@ def get_campaign_influencers(campaign_id: int) -> List[Dict[str, Any]]:
     except sqlite3.Error as exc:
         logger.error("get_campaign_influencers failed for campaign=%s: %s", campaign_id, exc)
         return []
+
+
+def delete_campaign(campaign_id: int) -> None:
+    """
+    Delete a campaign and all associated records (cascade).
+    Removes:
+    - campaign_influencers (junction table records)
+    - influencer_campaigns (the campaign itself)
+    """
+    try:
+        with _get_connection() as conn:
+            conn.execute(
+                "DELETE FROM campaign_influencers WHERE campaign_id = ?",
+                (campaign_id,),
+            )
+            conn.execute(
+                "DELETE FROM influencer_campaigns WHERE id = ?",
+                (campaign_id,),
+            )
+            conn.commit()
+            logger.info("Campaign %s deleted successfully", campaign_id)
+    except sqlite3.Error as exc:
+        logger.error("delete_campaign failed for id=%s: %s", campaign_id, exc)
+        raise sqlite3.Error(
+            f"Failed to delete campaign {campaign_id} and associated records: {exc}"
+        ) from exc
