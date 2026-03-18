@@ -2264,6 +2264,30 @@ SERVICES = [
         "name":  "Technical SEO Fix",
         "desc":  "Audit + prioritised action plan: we show you exactly what to fix first.",
     },
+    {
+        "key":   "influencer_discovery",
+        "icon":  "🔎",
+        "name":  "Influencer Discovery",
+        "desc":  "Search, filter, and score influencers across Instagram, TikTok, YouTube & LinkedIn.",
+    },
+    {
+        "key":   "campaign_mgmt",
+        "icon":  "📣",
+        "name":  "Campaign Management",
+        "desc":  "Create campaigns, link influencers, track reach, ROI, and performance metrics.",
+    },
+    {
+        "key":   "influencer_scorecard",
+        "icon":  "🏆",
+        "name":  "Influencer Scorecard",
+        "desc":  "Rate and compare influencers with a weighted authenticity & engagement score.",
+    },
+    {
+        "key":   "audience_analytics",
+        "icon":  "👥",
+        "name":  "Audience Analytics",
+        "desc":  "Demographic breakdown, authenticity analysis, and interests alignment.",
+    },
 ]
 
 # Render cards as columns with Streamlit buttons
@@ -2546,6 +2570,539 @@ elif active == "technical":
                 st.markdown("---")
                 st.markdown("**Full audit results:**")
                 display_results(tech_results, tech_score)
+
+# ── Service: Influencer Discovery ────────────────────────────────────────────
+elif active == "influencer_discovery":
+    from influencer_metrics import (
+        build_profile_metrics,
+        classify_influencer_tier,
+        get_tier_label,
+        filter_influencers,
+        compare_influencers,
+        TIER_NANO, TIER_MICRO, TIER_MACRO, TIER_MEGA,
+    )
+    import database as _db
+
+    _db.init_db()
+
+    st.markdown("### 🔎 Influencer Discovery")
+    st.caption(
+        "Search your stored influencer database or add a new influencer profile manually. "
+        "Filter by platform, tier, engagement rate, and audience authenticity."
+    )
+
+    with st.expander("➕ Add / Update Influencer Profile", expanded=False):
+        with st.form("add_influencer_form"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                inf_username = st.text_input("Username (without @)", placeholder="janedoe")
+                inf_platform = st.selectbox(
+                    "Platform", ["instagram", "tiktok", "youtube", "linkedin"]
+                )
+                inf_followers = st.number_input("Follower Count", min_value=0, value=10000)
+                inf_engagement = st.number_input(
+                    "Engagement Rate (%)", min_value=0.0, max_value=100.0,
+                    value=2.5, step=0.1, format="%.2f"
+                )
+            with col_b:
+                inf_growth = st.number_input(
+                    "Monthly Growth Rate (%)", min_value=-100.0, max_value=1000.0,
+                    value=1.0, step=0.1, format="%.2f"
+                )
+                inf_bio = st.text_area("Bio / Description", placeholder="About this creator…", height=80)
+                inf_url = st.text_input("Profile URL", placeholder="https://instagram.com/janedoe")
+
+            submitted = st.form_submit_button("💾 Save Influencer", type="primary")
+            if submitted:
+                if not inf_username:
+                    st.error("Username is required.")
+                else:
+                    tier = classify_influencer_tier(int(inf_followers))
+                    _db.upsert_influencer(
+                        username=inf_username,
+                        platform=inf_platform,
+                        follower_count=int(inf_followers),
+                        engagement_rate=float(inf_engagement),
+                        growth_rate=float(inf_growth),
+                        audience_tier=tier,
+                        bio=inf_bio,
+                        profile_url=inf_url,
+                    )
+                    st.success(
+                        f"✅ @{inf_username} saved as a {get_tier_label(tier)} "
+                        f"{inf_platform.title()} influencer."
+                    )
+
+    st.markdown("#### 🔍 Filter & Search")
+    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+    with f_col1:
+        f_platform = st.selectbox(
+            "Platform", ["All", "instagram", "tiktok", "youtube", "linkedin"],
+            key="disc_platform"
+        )
+    with f_col2:
+        f_tier = st.selectbox(
+            "Tier", ["All", TIER_NANO, TIER_MICRO, TIER_MACRO, TIER_MEGA],
+            format_func=lambda x: "All" if x == "All" else get_tier_label(x),
+            key="disc_tier"
+        )
+    with f_col3:
+        f_min_er = st.number_input(
+            "Min Engagement Rate (%)", min_value=0.0, max_value=100.0,
+            value=0.0, step=0.1, format="%.1f", key="disc_min_er"
+        )
+    with f_col4:
+        f_min_followers = st.number_input(
+            "Min Followers", min_value=0, value=0, step=1000, key="disc_min_fol"
+        )
+
+    platform_filter = None if f_platform == "All" else f_platform
+    tier_filter = None if f_tier == "All" else f_tier
+    all_influencers = _db.get_all_influencers(platform=platform_filter, tier=tier_filter)
+
+    # Convert DB rows to dicts compatible with filter_influencers
+    filtered = filter_influencers(
+        all_influencers,
+        min_followers=int(f_min_followers),
+        min_engagement_rate=float(f_min_er),
+    )
+
+    if not filtered:
+        st.info("No influencers match the current filters.  Add some profiles above to get started.")
+    else:
+        ranked = compare_influencers(filtered)
+        st.markdown(f"**{len(ranked)} influencer(s) found**")
+        for inf in ranked:
+            sc = inf.get("scorecard", {})
+            with st.container():
+                cols = st.columns([1, 3, 2, 2, 2, 2])
+                cols[0].markdown(f"**#{inf.get('rank', '?')}**")
+                cols[1].markdown(
+                    f"**@{inf.get('username', '')}** — {inf.get('platform', '').title()}"
+                )
+                cols[2].metric("Followers", f"{inf.get('follower_count', 0):,}")
+                cols[3].metric("Eng. Rate", f"{inf.get('engagement_rate', 0):.2f}%")
+                cols[4].metric("Tier", get_tier_label(inf.get('audience_tier') or
+                                                       inf.get('tier', '')))
+                cols[5].metric("Score", f"{sc.get('overall_score', 0):.1f}/100")
+
+# ── Service: Campaign Management ─────────────────────────────────────────────
+elif active == "campaign_mgmt":
+    import database as _db
+    from influencer_metrics import build_campaign_performance, calculate_roi
+    from report_generator import generate_campaign_roi_report
+
+    _db.init_db()
+
+    st.markdown("### 📣 Campaign Management")
+    st.caption(
+        "Create influencer campaigns, link creators, and track performance metrics "
+        "including reach, impressions, clicks, conversions, and ROI."
+    )
+
+    tab_list, tab_create, tab_update = st.tabs(
+        ["📋 All Campaigns", "➕ New Campaign", "✏️ Update Metrics"]
+    )
+
+    with tab_create:
+        with st.form("new_campaign_form"):
+            c_name = st.text_input("Campaign Name", placeholder="Summer Launch 2026")
+            c_col1, c_col2 = st.columns(2)
+            with c_col1:
+                c_budget = st.number_input("Budget ($)", min_value=0.0, value=500.0, step=50.0)
+                c_start = st.date_input("Start Date")
+                c_expected_reach = st.number_input(
+                    "Expected Reach", min_value=0, value=50000, step=1000
+                )
+            with c_col2:
+                c_end = st.date_input("End Date")
+                c_status = st.selectbox(
+                    "Status", ["draft", "active", "paused", "completed"]
+                )
+            c_submit = st.form_submit_button("🚀 Create Campaign", type="primary")
+            if c_submit:
+                if not c_name:
+                    st.error("Campaign name is required.")
+                else:
+                    cid = _db.create_campaign(
+                        campaign_name=c_name,
+                        budget=float(c_budget),
+                        start_date=str(c_start),
+                        end_date=str(c_end),
+                        expected_reach=int(c_expected_reach),
+                        status=c_status,
+                    )
+                    st.success(f"✅ Campaign **{c_name}** created (ID: {cid}).")
+
+    with tab_list:
+        campaigns = _db.get_all_campaigns()
+        if not campaigns:
+            st.info("No campaigns yet. Create one in the 'New Campaign' tab.")
+        else:
+            for camp in campaigns:
+                with st.expander(
+                    f"📣 {camp['campaign_name']} — {camp['status'].title()} "
+                    f"| Budget: ${camp['budget']:,.0f}"
+                ):
+                    perf = build_campaign_performance(
+                        campaign_name=camp["campaign_name"],
+                        budget=camp.get("budget", 0),
+                        reach=camp.get("actual_reach", 0),
+                        impressions=camp.get("impressions", 0),
+                        clicks=camp.get("clicks", 0),
+                        conversions=camp.get("conversions", 0),
+                        revenue=camp.get("revenue", 0),
+                        start_date=camp.get("start_date", ""),
+                        end_date=camp.get("end_date", ""),
+                    )
+                    col_a, col_b, col_c, col_d, col_e = st.columns(5)
+                    col_a.metric("Reach", f"{perf['reach']:,}")
+                    col_b.metric("Impressions", f"{perf['impressions']:,}")
+                    col_c.metric("CTR", f"{perf['ctr']:.2f}%")
+                    col_d.metric("Conversions", f"{perf['conversions']:,}")
+                    col_e.metric(
+                        "ROI",
+                        f"{perf['roi']:.1f}%",
+                        delta=f"{perf['roi']:.1f}%",
+                        delta_color="normal",
+                    )
+
+                    influencers_in_camp = _db.get_campaign_influencers(camp["id"])
+                    if st.button(
+                        f"📊 Download HTML Report",
+                        key=f"dl_camp_{camp['id']}"
+                    ):
+                        html = generate_campaign_roi_report(camp, influencers_in_camp)
+                        st.download_button(
+                            "⬇️ Save Report",
+                            data=html,
+                            file_name=f"campaign_{camp['id']}_report.html",
+                            mime="text/html",
+                            key=f"save_camp_{camp['id']}",
+                        )
+
+    with tab_update:
+        campaigns = _db.get_all_campaigns()
+        if not campaigns:
+            st.info("No campaigns yet.")
+        else:
+            camp_options = {c["campaign_name"]: c["id"] for c in campaigns}
+            sel_camp_name = st.selectbox("Select Campaign", list(camp_options.keys()))
+            sel_camp_id = camp_options[sel_camp_name]
+            with st.form("update_metrics_form"):
+                u_col1, u_col2 = st.columns(2)
+                with u_col1:
+                    u_reach = st.number_input("Actual Reach", min_value=0, value=0)
+                    u_impressions = st.number_input("Impressions", min_value=0, value=0)
+                    u_clicks = st.number_input("Clicks", min_value=0, value=0)
+                with u_col2:
+                    u_conversions = st.number_input("Conversions", min_value=0, value=0)
+                    u_revenue = st.number_input("Revenue Generated ($)", min_value=0.0, value=0.0)
+                    u_status = st.selectbox(
+                        "Update Status", ["", "draft", "active", "paused", "completed"]
+                    )
+                u_submit = st.form_submit_button("✅ Update Campaign", type="primary")
+                if u_submit:
+                    _db.update_campaign_metrics(
+                        campaign_id=sel_camp_id,
+                        actual_reach=u_reach or None,
+                        impressions=u_impressions or None,
+                        clicks=u_clicks or None,
+                        conversions=u_conversions or None,
+                        revenue=u_revenue or None,
+                        status=u_status or None,
+                    )
+                    st.success(f"✅ Campaign '{sel_camp_name}' updated.")
+
+# ── Service: Influencer Scorecard ─────────────────────────────────────────────
+elif active == "influencer_scorecard":
+    import database as _db
+    from influencer_metrics import (
+        build_influencer_scorecard,
+        build_audience_quality,
+        build_content_performance,
+        get_tier_label,
+        compare_influencers,
+    )
+    from report_generator import (
+        generate_influencer_html_report,
+        generate_influencer_comparison_html,
+    )
+
+    _db.init_db()
+
+    st.markdown("### 🏆 Influencer Scorecard")
+    st.caption(
+        "Select one or more influencers from your database to generate a weighted "
+        "scorecard comparing authenticity, engagement, audience size, and growth."
+    )
+
+    all_infs = _db.get_all_influencers()
+    if not all_infs:
+        st.info(
+            "No influencers in the database yet. "
+            "Add profiles via the **Influencer Discovery** tool first."
+        )
+    else:
+        inf_options = {
+            f"@{i['username']} ({i['platform'].title()})": i["id"]
+            for i in all_infs
+        }
+        selected_names = st.multiselect(
+            "Select influencers to score",
+            list(inf_options.keys()),
+            default=list(inf_options.keys())[:min(3, len(inf_options))],
+        )
+
+        if selected_names:
+            selected_ids = [inf_options[n] for n in selected_names]
+            selected_infs = [i for i in all_infs if i["id"] in selected_ids]
+
+            # Build minimal audience quality / content performance from stored data
+            enriched = []
+            for inf in selected_infs:
+                aq = build_audience_quality(
+                    engagement_rate=inf.get("engagement_rate", 2.0),
+                    follower_growth_rate=inf.get("growth_rate", 1.0),
+                )
+                cp = build_content_performance(
+                    avg_likes=0.0,
+                    avg_comments=0.0,
+                    follower_count=inf.get("follower_count", 1),
+                )
+                cp["engagement_rate"] = inf.get("engagement_rate", 0.0)
+                sc = build_influencer_scorecard(inf, aq, cp)
+                enriched.append({
+                    **inf,
+                    "audience_quality": aq,
+                    "content_performance": cp,
+                    "scorecard": sc,
+                })
+
+            ranked = compare_influencers(enriched)
+
+            st.markdown(f"#### Ranked Results ({len(ranked)} influencer(s))")
+            for inf in ranked:
+                sc = inf["scorecard"]
+                rating_colors = {
+                    "excellent": "🟢",
+                    "above_average": "🔵",
+                    "average": "🟡",
+                    "below_average": "🟠",
+                    "poor": "🔴",
+                }
+                icon = rating_colors.get(sc.get("rating", ""), "⚪")
+                with st.expander(
+                    f"{icon} #{inf['rank']} @{inf['username']} — "
+                    f"{sc['overall_score']:.1f}/100 ({sc['rating'].replace('_',' ').title()})"
+                ):
+                    comp = sc.get("components", {})
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Authenticity", f"{comp.get('authenticity', 0):.1f}/30")
+                    c2.metric("Engagement", f"{comp.get('engagement', 0):.1f}/30")
+                    c3.metric("Audience Size", f"{comp.get('audience_size', 0):.1f}/20")
+                    c4.metric("Growth", f"{comp.get('growth', 0):.1f}/20")
+
+                    html_report = generate_influencer_html_report(
+                        inf,
+                        scorecard=sc,
+                        audience_quality=inf["audience_quality"],
+                        content_performance=inf["content_performance"],
+                    )
+                    st.download_button(
+                        "⬇️ Download HTML Report",
+                        data=html_report,
+                        file_name=f"influencer_{inf['username']}_report.html",
+                        mime="text/html",
+                        key=f"dl_inf_{inf['id']}",
+                    )
+
+            if len(ranked) > 1:
+                st.markdown("#### Comparison Matrix")
+                comparison_html = generate_influencer_comparison_html(ranked)
+                st.components.v1.html(comparison_html, height=400, scrolling=True)
+                st.download_button(
+                    "⬇️ Download Comparison Matrix",
+                    data=comparison_html,
+                    file_name="influencer_comparison.html",
+                    mime="text/html",
+                )
+
+# ── Service: Audience Analytics ───────────────────────────────────────────────
+elif active == "audience_analytics":
+    import database as _db
+    from influencer_metrics import (
+        build_audience_quality,
+        calculate_authenticity_score,
+        analyse_growth_trend,
+        get_tier_label,
+    )
+
+    _db.init_db()
+
+    st.markdown("### 👥 Audience Analytics")
+    st.caption(
+        "Dive deep into audience demographics, authenticity, geographic distribution, "
+        "and growth trends for any influencer in your database."
+    )
+
+    all_infs = _db.get_all_influencers()
+    if not all_infs:
+        st.info(
+            "No influencers in the database yet. "
+            "Add profiles via the **Influencer Discovery** tool first."
+        )
+    else:
+        inf_map = {
+            f"@{i['username']} ({i['platform'].title()})": i
+            for i in all_infs
+        }
+        sel_name = st.selectbox("Select Influencer", list(inf_map.keys()))
+        inf = inf_map[sel_name]
+        inf_id = inf["id"]
+
+        st.markdown(f"#### @{inf['username']} · {inf['platform'].title()} · {get_tier_label(inf.get('audience_tier', ''))}")
+
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Followers", f"{inf.get('follower_count', 0):,}")
+        col2.metric("Engagement Rate", f"{inf.get('engagement_rate', 0):.2f}%")
+        col3.metric("Growth Rate", f"{inf.get('growth_rate', 0):.2f}%/mo")
+        col4.metric("Tier", get_tier_label(inf.get("audience_tier", "")))
+
+        st.markdown("---")
+        st.markdown("#### Audience Quality Estimator")
+        st.caption(
+            "Fill in the audience quality parameters below. "
+            "Connect social APIs for real data — manual input available for all platforms."
+        )
+
+        aq_col1, aq_col2 = st.columns(2)
+        with aq_col1:
+            real_pct = st.slider("Real Followers (%)", 0, 100, 80, key="aq_real")
+            suspicious_pct = st.slider("Suspicious Followers (%)", 0, 100, 5, key="aq_sus")
+        with aq_col2:
+            top_country1 = st.text_input("Top Country 1", "United States", key="tc1")
+            top_country1_pct = st.number_input("% of audience", 0.0, 100.0, 40.0, key="tc1p")
+            top_country2 = st.text_input("Top Country 2", "United Kingdom", key="tc2")
+            top_country2_pct = st.number_input("% of audience", 0.0, 100.0, 20.0, key="tc2p")
+
+        interests_input = st.text_input(
+            "Top Interests (comma-separated)",
+            "Fashion, Lifestyle, Travel",
+            key="aq_interests",
+        )
+        top_interests = [i.strip() for i in interests_input.split(",") if i.strip()]
+
+        gender_f = st.slider("Female Audience (%)", 0, 100, 60, key="aq_gf")
+        gender_m = 100 - gender_f
+
+        age_groups = {}
+        age_col1, age_col2, age_col3 = st.columns(3)
+        with age_col1:
+            age_groups["13-17"] = st.number_input("Age 13-17 (%)", 0.0, 100.0, 5.0, key="a1317")
+            age_groups["18-24"] = st.number_input("Age 18-24 (%)", 0.0, 100.0, 35.0, key="a1824")
+        with age_col2:
+            age_groups["25-34"] = st.number_input("Age 25-34 (%)", 0.0, 100.0, 30.0, key="a2534")
+            age_groups["35-44"] = st.number_input("Age 35-44 (%)", 0.0, 100.0, 20.0, key="a3544")
+        with age_col3:
+            age_groups["45-54"] = st.number_input("Age 45-54 (%)", 0.0, 100.0, 7.0, key="a4554")
+            age_groups["55+"] = st.number_input("Age 55+ (%)", 0.0, 100.0, 3.0, key="a55")
+
+        aq = build_audience_quality(
+            real_follower_pct=float(real_pct),
+            engagement_rate=inf.get("engagement_rate", 2.0),
+            follower_growth_rate=inf.get("growth_rate", 1.0),
+            suspicious_follower_pct=float(suspicious_pct),
+            top_countries=[
+                {"country": top_country1, "pct": top_country1_pct},
+                {"country": top_country2, "pct": top_country2_pct},
+            ],
+            age_distribution=age_groups,
+            gender_split={"female": float(gender_f), "male": float(gender_m)},
+            top_interests=top_interests,
+        )
+
+        st.markdown("---")
+        st.markdown("#### Results")
+        r1, r2, r3 = st.columns(3)
+        auth = aq["authenticity_score"]
+        auth_color = "🟢" if auth >= 70 else "🟡" if auth >= 50 else "🔴"
+        r1.metric("Authenticity Score", f"{auth:.1f}/100", delta=f"{auth_color}")
+        r2.metric("Real Followers", f"{real_pct}%")
+        r3.metric("Suspicious", f"{suspicious_pct}%")
+
+        import plotly.graph_objects as go_aud  # noqa: PLC0415
+
+        # Audience composition pie
+        fig_aud = go_aud.Figure(go_aud.Pie(
+            labels=["Real Followers", "Suspicious", "Unknown"],
+            values=[real_pct, suspicious_pct, max(0, 100 - real_pct - suspicious_pct)],
+            marker_colors=["#00d4aa", "#ef4444", "#f59e0b"],
+            hole=0.4,
+        ))
+        fig_aud.update_layout(
+            title="Audience Composition",
+            paper_bgcolor="#141414",
+            plot_bgcolor="#141414",
+            font_color="#e5e7eb",
+            height=300,
+            margin=dict(t=50, b=20, l=20, r=20),
+        )
+
+        # Age distribution bar
+        fig_age = go_aud.Figure(go_aud.Bar(
+            x=list(age_groups.keys()),
+            y=list(age_groups.values()),
+            marker_color="#00d4ff",
+        ))
+        fig_age.update_layout(
+            title="Age Distribution",
+            paper_bgcolor="#141414",
+            plot_bgcolor="#141414",
+            font_color="#e5e7eb",
+            height=300,
+            margin=dict(t=50, b=60, l=50, r=20),
+            xaxis_title="Age Group",
+            yaxis_title="%",
+        )
+
+        ch1, ch2 = st.columns(2)
+        ch1.plotly_chart(fig_aud, use_container_width=True)
+        ch2.plotly_chart(fig_age, use_container_width=True)
+
+        # Growth trend (from stored snapshots)
+        history = _db.get_influencer_metrics_history(inf_id, days=90)
+        if history:
+            trend = analyse_growth_trend(history)
+            st.markdown("#### Growth Trend (Last 90 Days)")
+            t1, t2, t3 = st.columns(3)
+            t1.metric("Total Growth", f"{trend['total_growth_pct']:.2f}%")
+            t2.metric("Avg Monthly Growth", f"{trend['avg_monthly_growth']:.2f}%")
+            t3.metric("ER Trend", trend["er_trend"].title())
+
+            dates = [s.get("date", "") for s in trend["snapshots"]]
+            fol_vals = [s.get("followers", 0) for s in trend["snapshots"]]
+            fig_growth = go_aud.Figure(go_aud.Scatter(
+                x=dates, y=fol_vals, mode="lines+markers",
+                line=dict(color="#00d4ff", width=2),
+                marker=dict(color="#00d4ff", size=6),
+            ))
+            fig_growth.update_layout(
+                title="Follower Growth",
+                paper_bgcolor="#141414",
+                plot_bgcolor="#141414",
+                font_color="#e5e7eb",
+                height=280,
+                margin=dict(t=50, b=60, l=60, r=20),
+                xaxis_gridcolor="#222",
+                yaxis_gridcolor="#222",
+            )
+            st.plotly_chart(fig_growth, use_container_width=True)
+        else:
+            st.info(
+                "No historical snapshots stored for this influencer.  "
+                "Snapshots are recorded automatically when you save metrics via the API integration."
+            )
 
 # ── 4. HOW IT WORKS ───────────────────────────────────────────────────────────
 st.markdown("---")

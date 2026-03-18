@@ -52,6 +52,83 @@ def init_db() -> None:
                     FOREIGN KEY (audit_id) REFERENCES audit_requests(id)
                 )
             """)
+            # ── Influencer marketing tables ──────────────────────────────────
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS influencers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    platform TEXT NOT NULL,
+                    follower_count INTEGER DEFAULT 0,
+                    engagement_rate REAL DEFAULT 0.0,
+                    growth_rate REAL DEFAULT 0.0,
+                    audience_tier TEXT,
+                    bio TEXT,
+                    profile_url TEXT,
+                    last_updated TEXT NOT NULL,
+                    UNIQUE(username, platform)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS social_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    influencer_id INTEGER NOT NULL,
+                    platform TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    follower_count INTEGER DEFAULT 0,
+                    profile_url TEXT,
+                    verified INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (influencer_id) REFERENCES influencers(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS influencer_campaigns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    campaign_name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    start_date TEXT,
+                    end_date TEXT,
+                    budget REAL DEFAULT 0.0,
+                    expected_reach INTEGER DEFAULT 0,
+                    actual_reach INTEGER DEFAULT 0,
+                    impressions INTEGER DEFAULT 0,
+                    clicks INTEGER DEFAULT 0,
+                    conversions INTEGER DEFAULT 0,
+                    revenue REAL DEFAULT 0.0,
+                    roi REAL DEFAULT 0.0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS campaign_influencers (
+                    campaign_id INTEGER NOT NULL,
+                    influencer_id INTEGER NOT NULL,
+                    fee REAL DEFAULT 0.0,
+                    expected_impressions INTEGER DEFAULT 0,
+                    actual_impressions INTEGER DEFAULT 0,
+                    links_shared TEXT,
+                    status TEXT NOT NULL DEFAULT 'invited',
+                    PRIMARY KEY (campaign_id, influencer_id),
+                    FOREIGN KEY (campaign_id) REFERENCES influencer_campaigns(id),
+                    FOREIGN KEY (influencer_id) REFERENCES influencers(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS influencer_metrics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    influencer_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    followers INTEGER DEFAULT 0,
+                    engagement_rate REAL DEFAULT 0.0,
+                    post_count INTEGER DEFAULT 0,
+                    avg_likes REAL DEFAULT 0.0,
+                    avg_comments REAL DEFAULT 0.0,
+                    avg_shares REAL DEFAULT 0.0,
+                    FOREIGN KEY (influencer_id) REFERENCES influencers(id),
+                    UNIQUE(influencer_id, date)
+                )
+            """)
             conn.commit()
         logger.info("Database initialised at %s", DB_PATH)
     except sqlite3.Error as exc:
@@ -299,7 +376,15 @@ def get_db_stats() -> Dict[str, Any]:
 
             # Only report on known application tables to avoid dynamic SQL on
             # arbitrary schema names (prevents SQL injection via schema manipulation).
-            _KNOWN_TABLES = {"audit_requests", "admin_notifications"}
+            _KNOWN_TABLES = {
+                "audit_requests",
+                "admin_notifications",
+                "influencers",
+                "social_accounts",
+                "influencer_campaigns",
+                "campaign_influencers",
+                "influencer_metrics",
+            }
             tables = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
             ).fetchall()
@@ -338,4 +423,307 @@ def get_recent_audits(days: int = 30) -> List[Dict[str, Any]]:
             return [dict(r) for r in rows]
     except sqlite3.Error as exc:
         logger.error("get_recent_audits failed: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Influencer CRUD
+# ---------------------------------------------------------------------------
+
+def upsert_influencer(
+    username: str,
+    platform: str,
+    follower_count: int = 0,
+    engagement_rate: float = 0.0,
+    growth_rate: float = 0.0,
+    audience_tier: str = "",
+    bio: str = "",
+    profile_url: str = "",
+) -> int:
+    """
+    Insert or update an influencer record.
+    Returns the row id of the inserted / updated record.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with _get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO influencers
+                    (username, platform, follower_count, engagement_rate, growth_rate,
+                     audience_tier, bio, profile_url, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(username, platform) DO UPDATE SET
+                    follower_count  = excluded.follower_count,
+                    engagement_rate = excluded.engagement_rate,
+                    growth_rate     = excluded.growth_rate,
+                    audience_tier   = excluded.audience_tier,
+                    bio             = excluded.bio,
+                    profile_url     = excluded.profile_url,
+                    last_updated    = excluded.last_updated
+                """,
+                (username, platform, follower_count, engagement_rate, growth_rate,
+                 audience_tier, bio, profile_url, now),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT id FROM influencers WHERE username = ? AND platform = ?",
+                (username, platform),
+            ).fetchone()
+            return row[0] if row else 0
+    except sqlite3.Error as exc:
+        logger.error("upsert_influencer failed: %s", exc)
+        raise
+
+
+def get_influencer(influencer_id: int) -> Optional[Dict[str, Any]]:
+    """Fetch a single influencer record by id."""
+    try:
+        with _get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM influencers WHERE id = ?", (influencer_id,)
+            ).fetchone()
+            return dict(row) if row else None
+    except sqlite3.Error as exc:
+        logger.error("get_influencer failed for id=%s: %s", influencer_id, exc)
+        return None
+
+
+def get_all_influencers(
+    platform: Optional[str] = None,
+    tier: Optional[str] = None,
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    """Return influencers, optionally filtered by platform and/or tier."""
+    conditions = []
+    params: List[Any] = []
+    if platform:
+        conditions.append("platform = ?")
+        params.append(platform.lower())
+    if tier:
+        conditions.append("audience_tier = ?")
+        params.append(tier)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params.append(limit)
+    try:
+        with _get_connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM influencers
+                {where}
+                ORDER BY follower_count DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        logger.error("get_all_influencers failed: %s", exc)
+        return []
+
+
+def record_influencer_metrics_snapshot(
+    influencer_id: int,
+    date: str,
+    followers: int,
+    engagement_rate: float = 0.0,
+    post_count: int = 0,
+    avg_likes: float = 0.0,
+    avg_comments: float = 0.0,
+    avg_shares: float = 0.0,
+) -> None:
+    """
+    Insert or replace a daily metrics snapshot for an influencer.
+    *date* should be an ISO date string ('YYYY-MM-DD').
+    """
+    try:
+        with _get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO influencer_metrics
+                    (influencer_id, date, followers, engagement_rate, post_count,
+                     avg_likes, avg_comments, avg_shares)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(influencer_id, date) DO UPDATE SET
+                    followers       = excluded.followers,
+                    engagement_rate = excluded.engagement_rate,
+                    post_count      = excluded.post_count,
+                    avg_likes       = excluded.avg_likes,
+                    avg_comments    = excluded.avg_comments,
+                    avg_shares      = excluded.avg_shares
+                """,
+                (influencer_id, date, followers, engagement_rate, post_count,
+                 avg_likes, avg_comments, avg_shares),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error("record_influencer_metrics_snapshot failed: %s", exc)
+        raise
+
+
+def get_influencer_metrics_history(
+    influencer_id: int,
+    days: int = 90,
+) -> List[Dict[str, Any]]:
+    """Return metric snapshots for an influencer over the last *days* days."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()[:10]
+    try:
+        with _get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM influencer_metrics
+                WHERE influencer_id = ? AND date >= ?
+                ORDER BY date ASC
+                """,
+                (influencer_id, cutoff),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        logger.error("get_influencer_metrics_history failed: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Campaign CRUD
+# ---------------------------------------------------------------------------
+
+def create_campaign(
+    campaign_name: str,
+    budget: float = 0.0,
+    start_date: str = "",
+    end_date: str = "",
+    expected_reach: int = 0,
+    status: str = "draft",
+) -> int:
+    """Insert a new influencer campaign and return its id."""
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with _get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO influencer_campaigns
+                    (campaign_name, status, start_date, end_date, budget,
+                     expected_reach, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (campaign_name, status, start_date, end_date, budget,
+                 expected_reach, now, now),
+            )
+            conn.commit()
+            return cur.lastrowid
+    except sqlite3.Error as exc:
+        logger.error("create_campaign failed: %s", exc)
+        raise
+
+
+def update_campaign_metrics(
+    campaign_id: int,
+    actual_reach: Optional[int] = None,
+    impressions: Optional[int] = None,
+    clicks: Optional[int] = None,
+    conversions: Optional[int] = None,
+    revenue: Optional[float] = None,
+    status: Optional[str] = None,
+) -> None:
+    """Update measurable fields for a running campaign."""
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with _get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE influencer_campaigns
+                SET actual_reach  = COALESCE(?, actual_reach),
+                    impressions   = COALESCE(?, impressions),
+                    clicks        = COALESCE(?, clicks),
+                    conversions   = COALESCE(?, conversions),
+                    revenue       = COALESCE(?, revenue),
+                    status        = COALESCE(?, status),
+                    updated_at    = ?
+                WHERE id = ?
+                """,
+                (actual_reach, impressions, clicks, conversions, revenue,
+                 status, now, campaign_id),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error("update_campaign_metrics failed for id=%s: %s", campaign_id, exc)
+        raise
+
+
+def get_campaign(campaign_id: int) -> Optional[Dict[str, Any]]:
+    """Fetch a single campaign by id."""
+    try:
+        with _get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM influencer_campaigns WHERE id = ?", (campaign_id,)
+            ).fetchone()
+            return dict(row) if row else None
+    except sqlite3.Error as exc:
+        logger.error("get_campaign failed for id=%s: %s", campaign_id, exc)
+        return None
+
+
+def get_all_campaigns(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return all campaigns, optionally filtered by status."""
+    try:
+        with _get_connection() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM influencer_campaigns WHERE status = ? ORDER BY created_at DESC",
+                    (status,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM influencer_campaigns ORDER BY created_at DESC"
+                ).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        logger.error("get_all_campaigns failed: %s", exc)
+        return []
+
+
+def add_influencer_to_campaign(
+    campaign_id: int,
+    influencer_id: int,
+    fee: float = 0.0,
+    expected_impressions: int = 0,
+) -> None:
+    """Link an influencer to a campaign (many-to-many)."""
+    try:
+        with _get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO campaign_influencers
+                    (campaign_id, influencer_id, fee, expected_impressions, status)
+                VALUES (?, ?, ?, ?, 'invited')
+                """,
+                (campaign_id, influencer_id, fee, expected_impressions),
+            )
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error(
+            "add_influencer_to_campaign failed (campaign=%s, influencer=%s): %s",
+            campaign_id, influencer_id, exc,
+        )
+        raise
+
+
+def get_campaign_influencers(campaign_id: int) -> List[Dict[str, Any]]:
+    """Return all influencers linked to a campaign with their metrics."""
+    try:
+        with _get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT ci.*, i.username, i.platform, i.follower_count,
+                       i.engagement_rate, i.audience_tier
+                FROM campaign_influencers ci
+                JOIN influencers i ON i.id = ci.influencer_id
+                WHERE ci.campaign_id = ?
+                ORDER BY i.follower_count DESC
+                """,
+                (campaign_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+    except sqlite3.Error as exc:
+        logger.error("get_campaign_influencers failed for campaign=%s: %s", campaign_id, exc)
         return []

@@ -5,7 +5,7 @@ Report generation: interactive HTML dashboard and PDF report.
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -600,3 +600,507 @@ def generate_pdf_report(
             return buf.getvalue()
         except Exception:
             return b""
+
+
+# ---------------------------------------------------------------------------
+# Influencer Reports
+# ---------------------------------------------------------------------------
+
+def generate_influencer_html_report(
+    influencer_data: Dict[str, Any],
+    scorecard: Optional[Dict[str, Any]] = None,
+    audience_quality: Optional[Dict[str, Any]] = None,
+    content_performance: Optional[Dict[str, Any]] = None,
+    growth_trend: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    Return a self-contained HTML report for an influencer profile.
+
+    Parameters mirror the dicts produced by influencer_metrics.py helpers.
+    Plotly charts are embedded as JSON and rendered via the Plotly CDN.
+    """
+    scorecard = scorecard or {}
+    audience_quality = audience_quality or {}
+    content_performance = content_performance or {}
+    growth_trend = growth_trend or {}
+
+    username = influencer_data.get("username", "Unknown")
+    platform = influencer_data.get("platform", "").capitalize()
+    follower_count = influencer_data.get("follower_count", 0)
+    tier_label = influencer_data.get("tier_label", "")
+    engagement_rate = content_performance.get(
+        "engagement_rate", influencer_data.get("engagement_rate", 0.0)
+    )
+    overall_score = scorecard.get("overall_score", 0)
+    score_color = _score_color(int(overall_score))
+
+    # ── Scorecard gauge ──────────────────────────────────────────────────────
+    gauge_data = json.dumps({
+        "data": [{
+            "type": "indicator",
+            "mode": "gauge+number",
+            "value": overall_score,
+            "title": {"text": "Influencer Score", "font": {"size": 18, "color": COLOR_TEXT}},
+            "number": {"font": {"size": 44, "color": score_color}, "suffix": "/100"},
+            "gauge": {
+                "axis": {"range": [0, 100], "tickcolor": COLOR_SUBTEXT},
+                "bar": {"color": score_color},
+                "bgcolor": COLOR_CARD,
+                "bordercolor": "#333",
+                "steps": [
+                    {"range": [0, 35], "color": "#2d0a0a"},
+                    {"range": [35, 65], "color": "#2d1f0a"},
+                    {"range": [65, 100], "color": "#0a2d1f"},
+                ],
+            },
+        }],
+        "layout": {
+            "paper_bgcolor": COLOR_BG,
+            "plot_bgcolor": COLOR_BG,
+            "margin": {"t": 60, "b": 20, "l": 20, "r": 20},
+            "height": 250,
+        },
+    })
+
+    # ── Audience quality pie ─────────────────────────────────────────────────
+    real_pct = audience_quality.get("real_follower_pct", 80.0)
+    suspicious_pct = audience_quality.get("suspicious_follower_pct", 5.0)
+    other_pct = max(0.0, 100.0 - real_pct - suspicious_pct)
+    audience_pie_data = json.dumps({
+        "data": [{
+            "type": "pie",
+            "labels": ["Real Followers", "Suspicious", "Unknown"],
+            "values": [real_pct, suspicious_pct, other_pct],
+            "marker": {"colors": [COLOR_PASS, COLOR_FAIL, COLOR_WARN]},
+            "textinfo": "label+percent",
+            "textfont": {"color": COLOR_TEXT},
+            "hole": 0.4,
+        }],
+        "layout": {
+            "paper_bgcolor": COLOR_BG,
+            "plot_bgcolor": COLOR_BG,
+            "font": {"color": COLOR_TEXT},
+            "showlegend": False,
+            "margin": {"t": 30, "b": 20, "l": 20, "r": 20},
+            "height": 250,
+        },
+    })
+
+    # ── Growth trend line ────────────────────────────────────────────────────
+    snapshots = growth_trend.get("snapshots", [])
+    dates = [s.get("date", "") for s in snapshots]
+    followers_series = [s.get("followers", 0) for s in snapshots]
+    growth_chart_data = json.dumps({
+        "data": [{
+            "type": "scatter",
+            "mode": "lines+markers",
+            "x": dates,
+            "y": followers_series,
+            "line": {"color": COLOR_ACCENT, "width": 2},
+            "marker": {"color": COLOR_ACCENT, "size": 6},
+            "name": "Followers",
+        }],
+        "layout": {
+            "paper_bgcolor": COLOR_BG,
+            "plot_bgcolor": COLOR_BG,
+            "font": {"color": COLOR_TEXT},
+            "xaxis": {"gridcolor": "#222", "title": "Date"},
+            "yaxis": {"gridcolor": "#222", "title": "Followers"},
+            "margin": {"t": 30, "b": 60, "l": 60, "r": 20},
+            "height": 250,
+        },
+    })
+
+    # ── Scorecard component bars ─────────────────────────────────────────────
+    components = scorecard.get("components", {})
+    comp_labels = ["Authenticity", "Engagement", "Audience Size", "Growth"]
+    comp_keys = ["authenticity", "engagement", "audience_size", "growth"]
+    comp_values = [components.get(k, 0) for k in comp_keys]
+    comp_colors = [
+        COLOR_PASS if v >= 20 else COLOR_WARN if v >= 10 else COLOR_FAIL
+        for v in comp_values
+    ]
+    bar_data = json.dumps({
+        "data": [{
+            "type": "bar",
+            "x": comp_labels,
+            "y": comp_values,
+            "marker": {"color": comp_colors},
+            "text": [f"{v:.1f}" for v in comp_values],
+            "textposition": "outside",
+            "textfont": {"color": COLOR_TEXT},
+        }],
+        "layout": {
+            "paper_bgcolor": COLOR_BG,
+            "plot_bgcolor": COLOR_BG,
+            "font": {"color": COLOR_TEXT},
+            "yaxis": {"range": [0, 35], "gridcolor": "#222"},
+            "xaxis": {"gridcolor": "#222"},
+            "margin": {"t": 30, "b": 60, "l": 50, "r": 20},
+            "height": 250,
+        },
+    })
+
+    top_interests = audience_quality.get("top_interests", [])
+    top_countries = audience_quality.get("top_countries", [])
+    gender_split = audience_quality.get("gender_split", {})
+    age_dist = audience_quality.get("age_distribution", {})
+
+    def _kv_row(label: str, value: Any) -> str:
+        return (
+            f"<tr><td style='color:{COLOR_SUBTEXT};padding:6px 12px 6px 0'>{label}</td>"
+            f"<td style='color:{COLOR_TEXT};font-weight:600'>{value}</td></tr>"
+        )
+
+    profile_rows = "".join([
+        _kv_row("Platform", platform),
+        _kv_row("Followers", f"{follower_count:,}"),
+        _kv_row("Tier", tier_label),
+        _kv_row("Engagement Rate", f"{engagement_rate:.2f}%"),
+        _kv_row("Authenticity Score", f"{audience_quality.get('authenticity_score', 0):.1f}/100"),
+        _kv_row("Overall Score", f"{overall_score:.1f}/100"),
+        _kv_row("Score Rating", scorecard.get("rating", "").replace("_", " ").title()),
+    ])
+
+    interests_html = (
+        " ".join(
+            f"<span style='background:{COLOR_CARD};border:1px solid #333;"
+            f"border-radius:12px;padding:2px 10px;font-size:0.8rem'>{i}</span>"
+            for i in top_interests
+        )
+        if top_interests
+        else "<em style='color:#555'>No data</em>"
+    )
+
+    countries_html = ""
+    for c in top_countries[:5]:
+        country = c.get("country", "")
+        pct = c.get("pct", 0)
+        countries_html += (
+            f"<div style='display:flex;justify-content:space-between;"
+            f"margin-bottom:4px'>"
+            f"<span style='color:{COLOR_TEXT}'>{country}</span>"
+            f"<span style='color:{COLOR_ACCENT}'>{pct:.1f}%</span></div>"
+        )
+    if not countries_html:
+        countries_html = "<em style='color:#555'>No data</em>"
+
+    gender_html = " | ".join(
+        f"<b style='color:{COLOR_TEXT}'>{g.title()}</b> {p:.1f}%"
+        for g, p in gender_split.items()
+    ) or "<em style='color:#555'>No data</em>"
+
+    age_html = " | ".join(
+        f"<b style='color:{COLOR_TEXT}'>{bracket}</b> {pct:.1f}%"
+        for bracket, pct in sorted(age_dist.items())
+    ) or "<em style='color:#555'>No data</em>"
+
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Influencer Report — {username}</title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{background:{COLOR_BG};color:{COLOR_TEXT};font-family:'Segoe UI',system-ui,sans-serif;padding:24px}}
+    h2{{color:{COLOR_ACCENT};margin-bottom:8px}}
+    h3{{color:{COLOR_SUBTEXT};font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;margin:24px 0 8px}}
+    .card{{background:{COLOR_CARD};border-radius:12px;padding:20px;margin-bottom:20px}}
+    .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:20px}}
+    .grid4{{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}}
+    .metric{{background:{COLOR_BG};border:1px solid #222;border-radius:10px;padding:16px;text-align:center}}
+    .metric-val{{font-size:1.6rem;font-weight:800;color:{COLOR_ACCENT}}}
+    .metric-lbl{{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px;color:{COLOR_SUBTEXT};margin-top:4px}}
+    .hero{{background:linear-gradient(135deg,#0d2137,#1e3a5f);border-radius:16px;padding:32px;margin-bottom:24px}}
+    .hero h1{{font-size:2rem;font-weight:800;color:white}}
+    .hero .sub{{color:rgba(255,255,255,0.7);margin-top:8px}}
+    table{{width:100%;border-collapse:collapse}}
+    @media(max-width:700px){{.grid2,.grid4{{grid-template-columns:1fr}}}}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>@{username}</h1>
+    <div class="sub">{platform} · {tier_label} · Generated {now_str}</div>
+  </div>
+
+  <div class="grid4">
+    <div class="metric"><div class="metric-val">{follower_count:,}</div><div class="metric-lbl">Followers</div></div>
+    <div class="metric"><div class="metric-val">{engagement_rate:.2f}%</div><div class="metric-lbl">Engagement Rate</div></div>
+    <div class="metric"><div class="metric-val">{audience_quality.get('authenticity_score', 0):.0f}</div><div class="metric-lbl">Authenticity Score</div></div>
+    <div class="metric"><div class="metric-val" style="color:{score_color}">{overall_score:.0f}</div><div class="metric-lbl">Overall Score</div></div>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="card">
+      <h3>Influencer Score</h3>
+      <div id="gauge_chart"></div>
+    </div>
+    <div class="card">
+      <h3>Score Components</h3>
+      <div id="bar_chart"></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Audience Authenticity</h3>
+      <div id="audience_pie"></div>
+    </div>
+    <div class="card">
+      <h3>Follower Growth Trend</h3>
+      <div id="growth_chart"></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Profile Summary</h3>
+      <table>{profile_rows}</table>
+    </div>
+    <div class="card">
+      <h3>Audience Demographics</h3>
+      <p style="font-size:0.8rem;color:{COLOR_SUBTEXT};margin-bottom:6px">Gender</p>
+      <p style="margin-bottom:12px">{gender_html}</p>
+      <p style="font-size:0.8rem;color:{COLOR_SUBTEXT};margin-bottom:6px">Age Groups</p>
+      <p style="margin-bottom:12px">{age_html}</p>
+      <p style="font-size:0.8rem;color:{COLOR_SUBTEXT};margin-bottom:6px">Top Countries</p>
+      {countries_html}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Top Interests</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">{interests_html}</div>
+  </div>
+
+  <script>
+    Plotly.newPlot('gauge_chart', {gauge_data}.data, {gauge_data}.layout, {{responsive:true}});
+    Plotly.newPlot('bar_chart', {bar_data}.data, {bar_data}.layout, {{responsive:true}});
+    Plotly.newPlot('audience_pie', {audience_pie_data}.data, {audience_pie_data}.layout, {{responsive:true}});
+    Plotly.newPlot('growth_chart', {growth_chart_data}.data, {growth_chart_data}.layout, {{responsive:true}});
+  </script>
+</body>
+</html>"""
+
+
+def generate_campaign_roi_report(
+    campaign: Dict[str, Any],
+    influencers: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """
+    Return a self-contained HTML campaign ROI report.
+
+    Parameters
+    ----------
+    campaign:   Campaign dict (same schema as database.get_campaign).
+    influencers: List of campaign influencer dicts (from get_campaign_influencers).
+    """
+    influencers = influencers or []
+    name = campaign.get("campaign_name", "Campaign")
+    budget = campaign.get("budget", 0.0)
+    actual_reach = campaign.get("actual_reach", 0)
+    impressions = campaign.get("impressions", 0)
+    clicks = campaign.get("clicks", 0)
+    conversions = campaign.get("conversions", 0)
+    revenue = campaign.get("revenue", 0.0)
+    roi = campaign.get("roi", 0.0)
+    status = campaign.get("status", "").title()
+
+    ctr = round(clicks / max(impressions, 1) * 100, 4)
+    cpm = round(budget / max(impressions, 1) * 1000, 2)
+    cpc = round(budget / max(clicks, 1), 2)
+    cvr = round(conversions / max(clicks, 1) * 100, 4)
+
+    roi_color = COLOR_PASS if roi >= 0 else COLOR_FAIL
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    # Funnel chart
+    funnel_data = json.dumps({
+        "data": [{
+            "type": "funnel",
+            "y": ["Reach", "Impressions", "Clicks", "Conversions"],
+            "x": [actual_reach, impressions, clicks, conversions],
+            "marker": {"color": [COLOR_ACCENT, COLOR_PASS, COLOR_WARN, COLOR_FAIL]},
+            "textinfo": "value+percent initial",
+        }],
+        "layout": {
+            "paper_bgcolor": COLOR_BG,
+            "plot_bgcolor": COLOR_BG,
+            "font": {"color": COLOR_TEXT},
+            "margin": {"t": 30, "b": 30, "l": 120, "r": 20},
+            "height": 280,
+        },
+    })
+
+    # Influencer table rows
+    inf_rows = ""
+    for inf in influencers:
+        inf_rows += (
+            f"<tr>"
+            f"<td>@{inf.get('username', '')}</td>"
+            f"<td>{inf.get('platform', '').title()}</td>"
+            f"<td>{inf.get('follower_count', 0):,}</td>"
+            f"<td>${inf.get('fee', 0):.0f}</td>"
+            f"<td>{inf.get('expected_impressions', 0):,}</td>"
+            f"<td>{inf.get('actual_impressions', 0):,}</td>"
+            f"<td>{inf.get('status', '').title()}</td>"
+            f"</tr>"
+        )
+    if not inf_rows:
+        inf_rows = "<tr><td colspan='7' style='color:#555;text-align:center'>No influencers linked</td></tr>"
+
+    def _metric_card(label: str, value: str, color: str = COLOR_ACCENT) -> str:
+        return (
+            f"<div class='metric'>"
+            f"<div class='metric-val' style='color:{color}'>{value}</div>"
+            f"<div class='metric-lbl'>{label}</div>"
+            f"</div>"
+        )
+
+    metrics_html = "".join([
+        _metric_card("Budget", f"${budget:,.2f}"),
+        _metric_card("Revenue", f"${revenue:,.2f}", COLOR_PASS),
+        _metric_card("ROI", f"{roi:.1f}%", roi_color),
+        _metric_card("Reach", f"{actual_reach:,}"),
+        _metric_card("Impressions", f"{impressions:,}"),
+        _metric_card("Clicks", f"{clicks:,}"),
+        _metric_card("Conversions", f"{conversions:,}"),
+        _metric_card("CTR", f"{ctr:.2f}%"),
+        _metric_card("CPM", f"${cpm:.2f}"),
+        _metric_card("CPC", f"${cpc:.2f}"),
+        _metric_card("CVR", f"{cvr:.2f}%"),
+        _metric_card("Status", status),
+    ])
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Campaign Report — {name}</title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{background:{COLOR_BG};color:{COLOR_TEXT};font-family:'Segoe UI',system-ui,sans-serif;padding:24px}}
+    h3{{color:{COLOR_SUBTEXT};font-size:0.85rem;text-transform:uppercase;letter-spacing:1px;margin:24px 0 8px}}
+    .card{{background:{COLOR_CARD};border-radius:12px;padding:20px;margin-bottom:20px}}
+    .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:20px}}
+    .metric{{background:{COLOR_BG};border:1px solid #222;border-radius:10px;padding:14px;text-align:center}}
+    .metric-val{{font-size:1.4rem;font-weight:800;color:{COLOR_ACCENT}}}
+    .metric-lbl{{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.5px;color:{COLOR_SUBTEXT};margin-top:4px}}
+    .hero{{background:linear-gradient(135deg,#0d2137,#1e3a5f);border-radius:16px;padding:28px;margin-bottom:24px}}
+    .hero h1{{font-size:1.8rem;font-weight:800;color:white}}
+    .hero .sub{{color:rgba(255,255,255,0.7);margin-top:6px}}
+    table{{width:100%;border-collapse:collapse;font-size:0.88rem}}
+    th{{color:{COLOR_SUBTEXT};text-align:left;padding:8px;border-bottom:1px solid #222;font-weight:600}}
+    td{{color:{COLOR_TEXT};padding:8px;border-bottom:1px solid #1a1a1a}}
+    tr:hover td{{background:#1c1c1c}}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>{name}</h1>
+    <div class="sub">Status: {status} · Generated {now_str}</div>
+  </div>
+
+  <div class="grid">{metrics_html}</div>
+
+  <div class="card">
+    <h3>Conversion Funnel</h3>
+    <div id="funnel_chart"></div>
+  </div>
+
+  <div class="card">
+    <h3>Influencers in Campaign</h3>
+    <table>
+      <thead>
+        <tr><th>Handle</th><th>Platform</th><th>Followers</th><th>Fee</th>
+            <th>Expected Impr.</th><th>Actual Impr.</th><th>Status</th></tr>
+      </thead>
+      <tbody>{inf_rows}</tbody>
+    </table>
+  </div>
+
+  <script>
+    Plotly.newPlot('funnel_chart', {funnel_data}.data, {funnel_data}.layout, {{responsive:true}});
+  </script>
+</body>
+</html>"""
+
+
+def generate_influencer_comparison_html(
+    influencers: List[Dict[str, Any]],
+) -> str:
+    """
+    Return an HTML comparison matrix for a list of influencer dicts.
+
+    Each influencer dict should include profile metrics and optionally
+    'scorecard', 'audience_quality', and 'content_performance' sub-dicts.
+    """
+    if not influencers:
+        return "<p>No influencers to compare.</p>"
+
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    headers = [
+        "Handle", "Platform", "Tier", "Followers", "Engagement Rate",
+        "Authenticity", "Overall Score", "Rating",
+    ]
+
+    rows_html = ""
+    for inf in influencers:
+        aq = inf.get("audience_quality", {})
+        sc = inf.get("scorecard", {})
+        cp = inf.get("content_performance", {})
+        er = cp.get("engagement_rate", inf.get("engagement_rate", 0.0))
+        overall = sc.get("overall_score", 0)
+        score_col = COLOR_PASS if overall >= 65 else COLOR_WARN if overall >= 35 else COLOR_FAIL
+        rows_html += (
+            f"<tr>"
+            f"<td><a href='{inf.get('profile_url', '#')}' style='color:{COLOR_ACCENT}'>"
+            f"@{inf.get('username', '')}</a></td>"
+            f"<td>{inf.get('platform', '').title()}</td>"
+            f"<td>{inf.get('tier_label', '')}</td>"
+            f"<td>{inf.get('follower_count', 0):,}</td>"
+            f"<td>{er:.2f}%</td>"
+            f"<td>{aq.get('authenticity_score', 0):.1f}</td>"
+            f"<td style='color:{score_col};font-weight:700'>{overall:.1f}</td>"
+            f"<td>{sc.get('rating', '').replace('_', ' ').title()}</td>"
+            f"</tr>"
+        )
+
+    header_html = "".join(f"<th>{h}</th>" for h in headers)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Influencer Comparison — ATI &amp; AI</title>
+  <style>
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{background:{COLOR_BG};color:{COLOR_TEXT};font-family:'Segoe UI',system-ui,sans-serif;padding:24px}}
+    h1{{color:{COLOR_ACCENT};margin-bottom:8px;font-size:1.6rem}}
+    .sub{{color:{COLOR_SUBTEXT};font-size:0.85rem;margin-bottom:20px}}
+    .card{{background:{COLOR_CARD};border-radius:12px;padding:20px}}
+    table{{width:100%;border-collapse:collapse;font-size:0.88rem}}
+    th{{color:{COLOR_SUBTEXT};text-align:left;padding:10px 8px;border-bottom:2px solid #222;font-weight:600;white-space:nowrap}}
+    td{{color:{COLOR_TEXT};padding:10px 8px;border-bottom:1px solid #1a1a1a}}
+    tr:hover td{{background:#1c1c1c}}
+  </style>
+</head>
+<body>
+  <h1>Influencer Comparison Matrix</h1>
+  <div class="sub">Generated {now_str} · {len(influencers)} influencer(s)</div>
+  <div class="card">
+    <table>
+      <thead><tr>{header_html}</tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+  </div>
+</body>
+</html>"""

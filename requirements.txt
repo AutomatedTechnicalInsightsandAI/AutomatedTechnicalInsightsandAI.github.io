@@ -5,3 +5,9 @@ plotly>=5.18.0
 reportlab>=4.1.0
 jinja2>=3.1.0
 python-dotenv>=1.0.0
+# Social media influencer analytics
+instagrapi>=2.3.0
+TikTokApi>=7.3.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.100.0
+python-linkedin-v2>=0.9.4
