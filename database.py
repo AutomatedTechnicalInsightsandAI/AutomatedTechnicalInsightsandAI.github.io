@@ -6,7 +6,7 @@ import sqlite3
 import json
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ def create_audit_request(
     """
     Insert a new audit request and return its generated id.
     """
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         with _get_connection() as conn:
             cur = conn.execute(
@@ -97,7 +97,7 @@ def update_audit_status(
     error_message: Optional[str] = None,
 ) -> None:
     """Update the status (and optional fields) of an existing audit record."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     completed_at = now if status in ("completed", "failed") else None
     results_json = json.dumps(audit_results) if audit_results is not None else None
 
@@ -322,7 +322,7 @@ def get_db_stats() -> Dict[str, Any]:
 
 def get_recent_audits(days: int = 30) -> List[Dict[str, Any]]:
     """Return audits created within the last *days* days."""
-    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     try:
         with _get_connection() as conn:
             rows = conn.execute(

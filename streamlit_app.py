@@ -58,7 +58,14 @@ except Exception as _e:
 # ---------------------------------------------------------------------------
 # Config / constants
 # ---------------------------------------------------------------------------
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD") or "admin123"
+if ADMIN_PASSWORD == "admin123":
+    import warnings
+    warnings.warn(
+        "ADMIN_PASSWORD is not set — using insecure default 'admin123'. "
+        "Set the ADMIN_PASSWORD environment variable before deploying to production.",
+        stacklevel=1,
+    )
 COLOR_ACCENT = "#00d4ff"
 COLOR_BG = "#0a0a0a"
 COLOR_CARD = "#141414"

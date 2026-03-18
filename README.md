@@ -199,7 +199,7 @@ Below is a prioritised list of improvements. Items higher in the list have more 
 
 | # | Task | Why it matters |
 |---|---|---|
-| 1 | **Change `ADMIN_PASSWORD`** — update the default value (`admin123`) in your deployment secrets | The default password is public knowledge and must be changed before production use |
+| 1 | **Change `ADMIN_PASSWORD`** — update the default value (`admin123`) in your deployment secrets. A startup warning is now logged if the default is detected | The default password is public knowledge and must be changed before production use |
 | 2 | **Configure email delivery** — set `EMAIL_SENDER` and `EMAIL_PASSWORD` in Streamlit Cloud secrets | Without this, audit reports are generated but never delivered to customers |
 | 3 | **Persistent database** — the SQLite file resets on every Streamlit Cloud deployment; consider [Supabase](https://supabase.com) (free tier, Postgres) or [Streamlit Community Cloud file persistence](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/file-storage) | Without persistence, audit history and analytics are lost on each redeploy |
 

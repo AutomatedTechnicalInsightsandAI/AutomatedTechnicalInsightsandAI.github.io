@@ -4,7 +4,7 @@ Report generation: interactive HTML dashboard and PDF report.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def generate_html_dashboard(audit_data: Dict[str, Any], audit_id: int = 0) -> st
     """
     score = audit_data.get("score", 0)
     url = audit_data.get("url", "")
-    timestamp = audit_data.get("timestamp", datetime.utcnow().isoformat())
+    timestamp = audit_data.get("timestamp", datetime.now(timezone.utc).isoformat())
     summary = audit_data.get("summary", {})
     categories = audit_data.get("categories", {})
     checks = audit_data.get("checks", [])
@@ -341,7 +341,7 @@ def generate_html_dashboard(audit_data: Dict[str, Any], audit_id: int = 0) -> st
 </div><!-- /container -->
 
 <div class="footer">
-  &copy; {datetime.utcnow().year} ATI &amp; AI — Automated Technical Insights &amp; AI. All rights reserved.
+  &copy; {datetime.now(timezone.utc).year} ATI &amp; AI — Automated Technical Insights &amp; AI. All rights reserved.
 </div>
 
 <script>
