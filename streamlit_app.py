@@ -536,8 +536,8 @@ def perform_seo_audit(website, keyword=None):
             "status_code": response.status_code,
         }
 
-    soup = BeautifulSoup(response.text, "html.parser")
 
+ copilot/enhance-seo-audit-tool
     # Basic meta
     title_tag = soup.find("title")
     title_text = title_tag.get_text(strip=True) if title_tag else ""
@@ -2625,3 +2625,4 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
