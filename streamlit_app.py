@@ -6,9 +6,13 @@ import csv
 import io
 import json
 import os
+import smtplib
 import socket
 import ssl
 import zipfile
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
@@ -847,6 +851,339 @@ def _session_zip(audit_list):
     return buf.read()
 
 
+# ── Email Notification & HTML Report ──────────────────────────────────────────
+
+def _get_email_config():
+    """
+    Load SMTP / notification settings from Streamlit secrets or environment vars.
+
+    Required secrets/env keys:
+        SMTP_HOST      — SMTP server hostname  (e.g. smtp.gmail.com)
+        SMTP_PORT      — SMTP port             (587 for STARTTLS, 465 for SSL)
+        SMTP_USER      — Sender email address
+        SMTP_PASSWORD  — Sender password / app password
+        NOTIFY_EMAIL   — Your destination address (where reports are sent)
+    """
+    def _get(key):
+        try:
+            if hasattr(st, "secrets") and key in st.secrets:
+                return str(st.secrets[key])
+        except Exception:
+            pass
+        return os.getenv(key, "")
+
+    return {
+        "host":     _get("SMTP_HOST"),
+        "port":     int(_get("SMTP_PORT") or 587),
+        "user":     _get("SMTP_USER"),
+        "password": _get("SMTP_PASSWORD"),
+        "notify":   _get("NOTIFY_EMAIL"),
+    }
+
+
+def _email_configured():
+    """Return True when all required SMTP fields are present."""
+    cfg = _get_email_config()
+    return all([cfg["host"], cfg["user"], cfg["password"], cfg["notify"]])
+
+
+def _score_color(score):
+    """Return a hex colour based on the score value."""
+    if score >= 80:
+        return "#27ae60"
+    if score >= 60:
+        return "#f39c12"
+    if score >= 40:
+        return "#e67e22"
+    return "#e74c3c"
+
+
+def _status_badge(status):
+    """Return a coloured HTML badge for pass / warn / fail."""
+    badges = {
+        "pass": '<span style="background:#27ae60;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8em">✅ Pass</span>',
+        "warn": '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8em">⚠️ Warn</span>',
+        "fail": '<span style="background:#e74c3c;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8em">❌ Fail</span>',
+    }
+    return badges.get(status, badges["fail"])
+
+
+def _progress_bar(pct, color):
+    """Return an inline HTML progress bar."""
+    return (
+        f'<div style="background:#e0e0e0;border-radius:6px;height:14px;width:100%">'
+        f'<div style="background:{color};width:{pct}%;border-radius:6px;height:14px"></div>'
+        f"</div>"
+    )
+
+
+def build_report_html(results, score_data):
+    """
+    Build a self-contained HTML audit report for email delivery.
+    Uses only inline CSS — no external resources required.
+    """
+    total = score_data.get("total", 0)
+    total_color = _score_color(total)
+    categories = score_data.get("categories", {})
+    recs = generate_recommendations(results)
+    rs = results.get("robots_sitemap", {})
+    timestamp = results.get("timestamp", datetime.utcnow().isoformat())
+    audited_url = results.get("url", "")
+    keyword = results.get("keyword") or "—"
+
+    # ── Category rows ──
+    cat_rows = ""
+    for cat, data in categories.items():
+        pct = data["pct"]
+        color = _score_color(pct)
+        cat_rows += f"""
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0">{cat}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;width:200px">
+            {_progress_bar(pct, color)}
+          </td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-weight:bold;color:{color}">{pct}%</td>
+        </tr>"""
+
+    # ── Key findings table ──
+    title = results.get("title", "") or "—"
+    desc  = results.get("description", "") or "—"
+    title_len = len(results.get("title", ""))
+    desc_len  = len(results.get("description", ""))
+    h1_info   = results.get("h1", {})
+    ssl_info  = results.get("ssl", {})
+    mobile    = results.get("mobile", {})
+    favicon   = results.get("favicon", {})
+    speed     = results.get("page_speed", {})
+    og        = results.get("og_tags", {})
+    tw        = results.get("twitter_tags", {})
+    sd        = results.get("structured_data", {})
+    broken_n  = len(results.get("links", {}).get("broken", []))
+
+    def _row(label, value, status):
+        return (
+            f'<tr><td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;color:#555">{label}</td>'
+            f'<td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">{value}</td>'
+            f'<td style="padding:6px 12px;border-bottom:1px solid #f0f0f0">{_status_badge(status)}</td></tr>'
+        )
+
+    findings_rows = (
+        _row("Meta Title",       f"{title[:60]}… ({title_len} chars)" if title_len > 60 else f"{title} ({title_len} chars)",
+             "pass" if 30 <= title_len <= 65 else ("warn" if title_len > 0 else "fail"))
+        + _row("Meta Description", f"{desc[:80]}… ({desc_len} chars)" if desc_len > 80 else f"{desc} ({desc_len} chars)",
+               "pass" if 50 <= desc_len <= 160 else ("warn" if desc_len > 0 else "fail"))
+        + _row("H1 Tag",           h1_info.get("message", "—"),        h1_info.get("status", "fail"))
+        + _row("SSL / HTTPS",      ssl_info.get("message", "—"),       ssl_info.get("status", "fail"))
+        + _row("Mobile Viewport",  mobile.get("message", "—"),         mobile.get("status", "fail"))
+        + _row("Favicon",          "Present" if favicon.get("present") else "Missing",
+               favicon.get("status", "fail"))
+        + _row("Open Graph",       f"{og.get('score', 0)}% complete",  og.get("status", "fail"))
+        + _row("Twitter Cards",    f"{tw.get('score', 0)}% complete",  tw.get("status", "fail"))
+        + _row("Structured Data",  sd.get("message", "—"),             sd.get("status", "warn"))
+        + _row("robots.txt",       "Found" if rs.get("robots", {}).get("found") else "Missing",
+               "pass" if rs.get("robots", {}).get("found") else "fail")
+        + _row("sitemap.xml",      "Found" if rs.get("sitemap", {}).get("found") else "Missing",
+               "pass" if rs.get("sitemap", {}).get("found") else "fail")
+        + _row("Broken Links",     f"{broken_n} broken (in sample)",
+               "pass" if broken_n == 0 else ("warn" if broken_n < 3 else "fail"))
+        + _row("Page Speed",       speed.get("note", "—"),             speed.get("status", "fail"))
+    )
+
+    # ── Recommendations ──
+    rec_items = "".join(f"<li style='margin-bottom:6px'>{r}</li>" for r in recs) if recs else "<li>No critical issues found 🎉</li>"
+
+    # ── Score arc (pure CSS) ──
+    circumference = 251  # ≈ 2π × 40
+    dash = round(total / 100 * circumference)
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>SEO Audit Report — {audited_url}</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f5f7fa;color:#333">
+
+<!-- Header -->
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background:linear-gradient(135deg,#1e3a5f,#2e86ab);padding:30px 40px;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:1.8rem">🔍 SEO Audit Report</h1>
+      <p style="color:rgba(255,255,255,0.85);margin:6px 0 0">Powered by ATI &amp; AI</p>
+    </td>
+  </tr>
+</table>
+
+<!-- Meta strip -->
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background:#1e3a5f;padding:10px 40px">
+      <p style="color:#fff;margin:0;font-size:0.85rem">
+        <strong>URL:</strong> {audited_url} &nbsp;|&nbsp;
+        <strong>Keyword:</strong> {keyword} &nbsp;|&nbsp;
+        <strong>Audited:</strong> {timestamp} UTC
+      </p>
+    </td>
+  </tr>
+</table>
+
+<!-- Body -->
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="padding:30px 40px">
+
+      <!-- Score card -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:24px">
+        <tr>
+          <td style="padding:30px;text-align:center">
+            <svg width="120" height="120" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="10"/>
+              <circle cx="50" cy="50" r="40" fill="none" stroke="{total_color}" stroke-width="10"
+                      stroke-dasharray="{dash} {circumference}"
+                      stroke-dashoffset="63"
+                      stroke-linecap="round"
+                      transform="rotate(-90 50 50)"/>
+              <text x="50" y="55" text-anchor="middle" font-size="22" font-weight="bold" fill="{total_color}">{total}</text>
+              <text x="50" y="68" text-anchor="middle" font-size="9" fill="#999">/100</text>
+            </svg>
+            <p style="margin:8px 0 0;font-size:1.1rem;font-weight:bold;color:{total_color}">
+              {"Excellent" if total >= 80 else "Good" if total >= 60 else "Needs Work" if total >= 40 else "Poor"}
+            </p>
+            <p style="margin:4px 0 0;color:#888;font-size:0.85rem">Overall SEO Score</p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Category scores -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:24px">
+        <tr>
+          <td style="padding:20px 24px;border-bottom:2px solid #f0f0f0">
+            <h2 style="margin:0;font-size:1.1rem;color:#1e3a5f">📊 Category Scores</h2>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              {cat_rows}
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Key findings -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:24px">
+        <tr>
+          <td style="padding:20px 24px;border-bottom:2px solid #f0f0f0">
+            <h2 style="margin:0;font-size:1.1rem;color:#1e3a5f">🔎 Key Findings</h2>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr style="background:#f8f9fa">
+                <th style="padding:8px 12px;text-align:left;font-size:0.8rem;color:#888;font-weight:600">CHECK</th>
+                <th style="padding:8px 12px;text-align:left;font-size:0.8rem;color:#888;font-weight:600">DETAIL</th>
+                <th style="padding:8px 12px;text-align:center;font-size:0.8rem;color:#888;font-weight:600">STATUS</th>
+              </tr>
+              {findings_rows}
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Recommendations -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:24px">
+        <tr>
+          <td style="padding:20px 24px;border-bottom:2px solid #f0f0f0">
+            <h2 style="margin:0;font-size:1.1rem;color:#1e3a5f">💡 Recommendations</h2>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px">
+            <ul style="margin:0;padding-left:20px;line-height:1.8">
+              {rec_items}
+            </ul>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+</table>
+
+<!-- Footer -->
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background:#1e3a5f;padding:16px 40px;text-align:center">
+      <p style="color:rgba(255,255,255,0.6);margin:0;font-size:0.8rem">
+        ATI &amp; AI · Free SEO Audit Tool · Report generated {timestamp} UTC<br>
+        The full structured data (CSV) is attached to this email.
+      </p>
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>"""
+    return html
+
+
+def send_audit_email(results, score_data):
+    """
+    Send an HTML audit report + CSV attachment to the configured NOTIFY_EMAIL.
+    Returns (True, "") on success or (False, error_message) on failure.
+    Silently skips if SMTP is not configured.
+    """
+    if not _email_configured():
+        return False, "SMTP not configured"
+
+    cfg = _get_email_config()
+    total = score_data.get("total", 0)
+    audited_url = results.get("url", "unknown")
+    timestamp_str = results.get("timestamp", datetime.utcnow().isoformat())
+
+    subject = (
+        f"🔍 SEO Audit Report — {audited_url} "
+        f"(Score: {total}/100) [{timestamp_str[:10]}]"
+    )
+
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"]    = cfg["user"]
+    msg["To"]      = cfg["notify"]
+
+    # HTML body
+    html_body = build_report_html(results, score_data)
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    # CSV attachment
+    csv_data = _export_csv([results])
+    if csv_data:
+        ts_file = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        att = MIMEApplication(csv_data.encode("utf-8"), Name=f"seo_audit_{ts_file}.csv")
+        att["Content-Disposition"] = f'attachment; filename="seo_audit_{ts_file}.csv"'
+        msg.attach(att)
+
+    try:
+        port = cfg["port"]
+        if port == 465:
+            ctx = ssl.create_default_context()
+            with smtplib.SMTP_SSL(cfg["host"], port, context=ctx) as server:
+                server.login(cfg["user"], cfg["password"])
+                server.sendmail(cfg["user"], cfg["notify"], msg.as_string())
+        else:
+            with smtplib.SMTP(cfg["host"], port, timeout=15) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(cfg["user"], cfg["password"])
+                server.sendmail(cfg["user"], cfg["notify"], msg.as_string())
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 # ── Dashboard Tab Renderers ────────────────────────────────────────────────────
 
 def _render_technical(results):
@@ -1065,6 +1402,47 @@ def render_admin_panel():
             st.session_state.admin_auth = False
             st.rerun()
 
+        # ── Email status ──────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("### 📧 Email Notifications")
+        if _email_configured():
+            cfg = _get_email_config()
+            st.success(f"✅ Configured → {cfg['notify']}")
+            st.caption(
+                "Reports are automatically emailed after every audit. "
+                "Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, NOTIFY_EMAIL "
+                "in Streamlit secrets or environment variables."
+            )
+            # Test send against the most recent audit in history
+            if st.session_state.audit_history:
+                if st.button("📤 Send Test Report"):
+                    last = st.session_state.audit_history[-1]
+                    sd = calculate_seo_score(last)
+                    ok, err = send_audit_email(last, sd)
+                    if ok:
+                        st.success(f"✅ Test report sent to {cfg['notify']}")
+                    else:
+                        st.error(f"❌ Send failed: {err}")
+            else:
+                st.info("Run an audit first to enable test send.")
+        else:
+            st.warning("⚠️ Email not configured")
+            with st.expander("Setup instructions"):
+                st.markdown("""
+Add these to your Streamlit secrets (`.streamlit/secrets.toml`) or as environment variables:
+
+```toml
+SMTP_HOST     = "smtp.gmail.com"
+SMTP_PORT     = 587
+SMTP_USER     = "you@gmail.com"
+SMTP_PASSWORD = "your-app-password"
+NOTIFY_EMAIL  = "you@gmail.com"
+```
+
+For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833).
+""")
+
+        # ── Export ────────────────────────────────────────────────────────────
         st.markdown("---")
         st.markdown("### 📥 Export Results")
         history = st.session_state.audit_history
@@ -1091,7 +1469,18 @@ def render_admin_panel():
                 file_name=f"seo_audits_{ts_str}.zip",
                 mime="application/zip",
             )
+            # Download latest HTML report
+            if history:
+                last = history[-1]
+                last_score = calculate_seo_score(last)
+                st.download_button(
+                    "⬇️ Download Latest HTML Report",
+                    data=build_report_html(last, last_score).encode("utf-8"),
+                    file_name=f"seo_report_{ts_str}.html",
+                    mime="text/html",
+                )
 
+        # ── Batch Audit ───────────────────────────────────────────────────────
         st.markdown("---")
         st.markdown("### 🔁 Batch Audit")
         batch_urls = st.text_area(
@@ -1104,13 +1493,21 @@ def render_admin_panel():
             urls = [u.strip() for u in batch_urls.split("\n") if u.strip()]
             if urls:
                 prog = st.progress(0)
+                sent_count = 0
                 for i, u in enumerate(urls):
                     with st.spinner(f"Auditing {u}…"):
                         r = perform_seo_audit(u, batch_kw or None)
                         if not r.get("error"):
                             st.session_state.audit_history.append(r)
+                            sd = calculate_seo_score(r)
+                            ok, _ = send_audit_email(r, sd)
+                            if ok:
+                                sent_count += 1
                     prog.progress((i + 1) / len(urls))
-                st.success(f"✅ Batch complete — {len(urls)} URL(s) audited")
+                msg = f"✅ Batch complete — {len(urls)} URL(s) audited"
+                if sent_count:
+                    msg += f", {sent_count} report(s) emailed"
+                st.success(msg)
             else:
                 st.warning("Enter at least one URL")
 
@@ -1169,13 +1566,23 @@ if run_audit:
                 )
             else:
                 score_data = calculate_seo_score(results)
-                progress_bar.progress(100, text="Complete!")
+                progress_bar.progress(95, text="Sending report…")
                 if results not in st.session_state.audit_history:
                     st.session_state.audit_history.append(results)
+                # Auto-send email report (silent if SMTP not configured)
+                email_ok, email_err = send_audit_email(results, score_data)
+                progress_bar.progress(100, text="Complete!")
                 progress_bar.empty()
-                st.success(
-                    f"✅ Audit complete — SEO Score: **{score_data['total']}/100**"
-                )
+                if email_ok:
+                    cfg = _get_email_config()
+                    st.success(
+                        f"✅ Audit complete — SEO Score: **{score_data['total']}/100** "
+                        f"· Report emailed to {cfg['notify']}"
+                    )
+                else:
+                    st.success(
+                        f"✅ Audit complete — SEO Score: **{score_data['total']}/100**"
+                    )
                 display_results(results, score_data)
         except Exception as exc:
             progress_bar.empty()
