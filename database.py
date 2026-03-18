@@ -267,6 +267,59 @@ def get_monthly_analytics() -> Dict[str, Any]:
         }
 
 
+def get_db_stats() -> Dict[str, Any]:
+    """
+    Return live diagnostics about the SQLite database:
+    - absolute file path
+    - file size in KB
+    - row counts for every table
+    - SQLite version
+    - connection status
+    """
+    stats: Dict[str, Any] = {
+        "db_path": os.path.abspath(DB_PATH),
+        "connected": False,
+        "sqlite_version": "",
+        "file_size_kb": None,
+        "tables": {},
+        "error": None,
+    }
+
+    # File size (may be 0 if DB hasn't been flushed yet)
+    try:
+        size_bytes = os.path.getsize(DB_PATH)
+        stats["file_size_kb"] = round(size_bytes / 1024, 1)
+    except OSError:
+        stats["file_size_kb"] = 0
+
+    try:
+        with _get_connection() as conn:
+            stats["connected"] = True
+            stats["sqlite_version"] = conn.execute("SELECT sqlite_version()").fetchone()[0]
+
+            # Only report on known application tables to avoid dynamic SQL on
+            # arbitrary schema names (prevents SQL injection via schema manipulation).
+            _KNOWN_TABLES = {"audit_requests", "admin_notifications"}
+            tables = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            ).fetchall()
+            for (tbl,) in tables:
+                if tbl not in _KNOWN_TABLES:
+                    # Skip internal SQLite tables (e.g. sqlite_sequence)
+                    continue
+                try:
+                    # Table name is validated against the whitelist above.
+                    count = conn.execute(f"SELECT COUNT(*) FROM \"{tbl}\"").fetchone()[0]
+                    stats["tables"][tbl] = count
+                except sqlite3.Error:
+                    stats["tables"][tbl] = "?"
+    except sqlite3.Error as exc:
+        stats["error"] = str(exc)
+        logger.error("get_db_stats failed: %s", exc)
+
+    return stats
+
+
 def get_recent_audits(days: int = 30) -> List[Dict[str, Any]]:
     """Return audits created within the last *days* days."""
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()

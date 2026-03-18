@@ -464,7 +464,7 @@ elif nav == "📊 Admin Dashboard":
         st.error(f"Database unavailable: {_db_error}")
         st.stop()
 
-    tabs = st.tabs(["📋 Pending Queue", "📁 Audit History", "📈 Monthly Analytics"])
+    tabs = st.tabs(["📋 Pending Queue", "📁 Audit History", "📈 Monthly Analytics", "🗄️ Database Status"])
 
     # -----------------------------------------------------------------------
     # Tab 1: Pending Queue
@@ -725,3 +725,71 @@ elif nav == "📊 Admin Dashboard":
                 st.plotly_chart(fig_issues, use_container_width=True)
             else:
                 st.info("No issue data available yet.")
+
+    # -----------------------------------------------------------------------
+    # Tab 4: Database Status
+    # -----------------------------------------------------------------------
+    with tabs[3]:
+        st.markdown(
+            f"<div style='font-size:1.1rem;font-weight:700;color:{COLOR_TEXT};margin-bottom:16px'>"
+            "Database Status</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("🔄 Refresh DB Status", key="refresh_db"):
+            st.rerun()
+
+        db_stats = db.get_db_stats()
+
+        # Connection status banner
+        if db_stats.get("connected"):
+            st.success("✅ SQLite is running and connected")
+        else:
+            st.error(f"❌ Database connection failed: {db_stats.get('error', 'Unknown error')}")
+
+        # Key metrics
+        s1, s2, s3 = st.columns(3)
+        s1.metric("SQLite Version", db_stats.get("sqlite_version", "—"))
+        s2.metric("File Size", f"{db_stats.get('file_size_kb', 0)} KB")
+        total_rows = sum(
+            v for v in db_stats.get("tables", {}).values() if isinstance(v, int)
+        )
+        s3.metric("Total Rows", total_rows)
+
+        # DB path
+        st.markdown(
+            f"<div style='color:{COLOR_SUB};font-size:0.85rem;margin-top:12px;margin-bottom:16px'>"
+            f"<b style='color:{COLOR_TEXT}'>Database Path:</b> "
+            f"<code style='background:#1a1a1a;padding:2px 8px;border-radius:4px;color:{COLOR_ACCENT}'>"
+            f"{db_stats.get('db_path', '—')}</code></div>",
+            unsafe_allow_html=True,
+        )
+
+        # Table row counts
+        tables = db_stats.get("tables", {})
+        if tables:
+            st.markdown(
+                f"<div style='font-weight:700;color:{COLOR_TEXT};margin-bottom:8px'>Table Row Counts</div>",
+                unsafe_allow_html=True,
+            )
+            for tbl_name, row_count in tables.items():
+                st.markdown(
+                    f"""
+                    <div style="display:flex;justify-content:space-between;align-items:center;
+                                background:{COLOR_CARD};border:1px solid #2a2a2a;border-radius:8px;
+                                padding:12px 18px;margin-bottom:8px">
+                      <div>
+                        <span style="color:{COLOR_ACCENT};font-family:monospace;font-size:0.95rem">
+                          {tbl_name}
+                        </span>
+                      </div>
+                      <div style="background:{COLOR_ACCENT}22;color:{COLOR_ACCENT};
+                                  border:1px solid {COLOR_ACCENT}44;padding:2px 14px;
+                                  border-radius:16px;font-size:0.85rem;font-weight:700">
+                        {row_count} rows
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.warning("No tables found — the database may not have been initialised.")

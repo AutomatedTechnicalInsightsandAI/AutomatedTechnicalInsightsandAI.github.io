@@ -29,24 +29,29 @@ _ALLOWED_SCHEMES = {"http", "https"}
 # SSRF protection
 # ---------------------------------------------------------------------------
 
-def _is_safe_url(url: str) -> bool:
+def _validated_url(url: str) -> Optional[str]:
     """
-    Return True only when *url* targets a public, routable host.
+    Validate *url* against SSRF risks and return a normalised copy if safe,
+    or None if the URL should be rejected.
 
     Rejects:
     - Non-http(s) schemes
     - Loopback, link-local, private, and other reserved IP ranges
     - Bare hostnames that resolve to such addresses
+
+    Returning the validated URL (rather than a plain bool) ensures callers
+    always use this function's output — not the original user-supplied string —
+    which makes the SSRF guard visible to static-analysis tools.
     """
     parsed = urlparse(url)
     if parsed.scheme not in _ALLOWED_SCHEMES:
-        return False
+        return None
     hostname = parsed.hostname
     if not hostname:
-        return False
+        return None
     # Block obvious localhost variants
     if hostname.lower() in {"localhost", "ip6-localhost", "ip6-loopback"}:
-        return False
+        return None
     try:
         # Resolve to IP and check for private/reserved ranges
         addr_info = socket.getaddrinfo(hostname, None)
@@ -61,11 +66,14 @@ def _is_safe_url(url: str) -> bool:
                 or ip.is_unspecified
             ):
                 logger.warning("Blocked SSRF attempt to %s (%s)", url, ip)
-                return False
+                return None
     except (socket.gaierror, ValueError):
         # DNS failure or invalid IP — block it to be safe
-        return False
-    return True
+        return None
+    # Reconstruct from parsed components so the returned value is independent
+    # of the raw user-supplied string.
+    safe = parsed._replace(fragment="").geturl()
+    return safe
 
 
 # ---------------------------------------------------------------------------
@@ -74,26 +82,28 @@ def _is_safe_url(url: str) -> bool:
 
 def _safe_get(url: str, timeout: int = REQUEST_TIMEOUT) -> Optional[requests.Response]:
     """Perform a GET request; return None on any failure or unsafe URL."""
-    if not _is_safe_url(url):
+    safe_url = _validated_url(url)
+    if safe_url is None:
         logger.warning("Skipping unsafe URL: %s", url)
         return None
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+        resp = requests.get(safe_url, headers=HEADERS, timeout=timeout, allow_redirects=True)
         return resp
     except requests.RequestException as exc:
-        logger.debug("GET %s failed: %s", url, exc)
+        logger.debug("GET %s failed: %s", safe_url, exc)
         return None
 
 
 def _safe_head(url: str, timeout: int = 6) -> Optional[requests.Response]:
     """Perform a HEAD request (falling back to GET on 405) for safe URLs only."""
-    if not _is_safe_url(url):
+    safe_url = _validated_url(url)
+    if safe_url is None:
         logger.warning("Skipping unsafe URL: %s", url)
         return None
     try:
-        resp = requests.head(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+        resp = requests.head(safe_url, headers=HEADERS, timeout=timeout, allow_redirects=True)
         if resp.status_code == 405:
-            resp = requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
+            resp = requests.get(safe_url, headers=HEADERS, timeout=timeout, allow_redirects=True)
         return resp
     except requests.RequestException:
         return None
@@ -568,7 +578,7 @@ def run_full_audit(url: str, keyword: Optional[str] = None) -> Dict[str, Any]:
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     # ---- Validate URL before any network activity ----------------------
-    if not _is_safe_url(url):
+    if _validated_url(url) is None:
         return {
             "score": 0,
             "url": url,
@@ -598,7 +608,7 @@ def run_full_audit(url: str, keyword: Optional[str] = None) -> Dict[str, Any]:
             "page_info": {},
         }
 
-    soup = BeautifulSoup(response.text, "lxml")
+    soup = BeautifulSoup(response.text, "html.parser")
     parsed = urlparse(url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
 
