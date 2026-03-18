@@ -2735,6 +2735,8 @@ elif active == "campaign_mgmt":
                     st.success(f"✅ Campaign **{c_name}** created (ID: {cid}).")
 
     with tab_list:
+        if st.session_state.get("delete_success_msg"):
+            st.success(st.session_state.pop("delete_success_msg"))
         campaigns = _db.get_all_campaigns()
         if not campaigns:
             st.info("No campaigns yet. Create one in the 'New Campaign' tab.")
@@ -2768,20 +2770,60 @@ elif active == "campaign_mgmt":
                     )
 
                     influencers_in_camp = _db.get_campaign_influencers(camp["id"])
-                    if st.button(
-                        f"📊 Download HTML Report",
-                        key=f"dl_camp_{camp['id']}"
-                    ):
-                        html = generate_campaign_roi_report(camp, influencers_in_camp)
-                        st.download_button(
-                            "⬇️ Save Report",
-                            data=html,
-                            file_name=f"campaign_{camp['id']}_report.html",
-                            mime="text/html",
-                            key=f"save_camp_{camp['id']}",
+                    col_dl, col_del = st.columns([3, 1])
+                    with col_dl:
+                        if st.button(
+                            f"📊 Download HTML Report",
+                            key=f"dl_camp_{camp['id']}"
+                        ):
+                            html = generate_campaign_roi_report(camp, influencers_in_camp)
+                            st.download_button(
+                                "⬇️ Save Report",
+                                data=html,
+                                file_name=f"campaign_{camp['id']}_report.html",
+                                mime="text/html",
+                                key=f"save_camp_{camp['id']}",
+                            )
+                    with col_del:
+                        if st.button(
+                            "🗑️ Delete",
+                            key=f"del_camp_{camp['id']}",
+                            help="Permanently delete this campaign",
+                        ):
+                            st.session_state[f"confirm_delete_{camp['id']}"] = True
+
+                    if st.session_state.get(f"confirm_delete_{camp['id']}"):
+                        st.warning(
+                            f"⚠️ Are you sure you want to delete "
+                            f"**'{camp['campaign_name']}'**? This cannot be undone."
                         )
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button(
+                                "✅ Yes, Delete",
+                                key=f"confirm_yes_{camp['id']}",
+                            ):
+                                _db.delete_campaign(camp["id"])
+                                st.session_state.pop(
+                                    f"confirm_delete_{camp['id']}", None
+                                )
+                                st.session_state["delete_success_msg"] = (
+                                    f"✅ Campaign '{camp['campaign_name']}' deleted."
+                                )
+                                st.rerun()
+                        with col_no:
+                            if st.button(
+                                "❌ Cancel",
+                                key=f"confirm_no_{camp['id']}",
+                            ):
+                                st.session_state.pop(
+                                    f"confirm_delete_{camp['id']}", None
+                                )
+                                st.rerun()
 
     with tab_update:
+        if st.session_state.get("delete_success_msg"):
+            st.success(st.session_state.pop("delete_success_msg"))
         campaigns = _db.get_all_campaigns()
         if not campaigns:
             st.info("No campaigns yet.")
@@ -2801,7 +2843,11 @@ elif active == "campaign_mgmt":
                     u_status = st.selectbox(
                         "Update Status", ["", "draft", "active", "paused", "completed"]
                     )
-                u_submit = st.form_submit_button("✅ Update Campaign", type="primary")
+                col_update, col_delete = st.columns(2)
+                with col_update:
+                    u_submit = st.form_submit_button("✅ Update Campaign", type="primary")
+                with col_delete:
+                    u_delete = st.form_submit_button("🗑️ Delete Campaign", type="secondary")
                 if u_submit:
                     _db.update_campaign_metrics(
                         campaign_id=sel_camp_id,
@@ -2813,6 +2859,33 @@ elif active == "campaign_mgmt":
                         status=u_status or None,
                     )
                     st.success(f"✅ Campaign '{sel_camp_name}' updated.")
+                if u_delete:
+                    st.session_state["pending_delete_campaign_id"] = sel_camp_id
+                    st.session_state["pending_delete_campaign_name"] = sel_camp_name
+                    st.rerun()
+
+            if st.session_state.get("pending_delete_campaign_id"):
+                pending_id = st.session_state["pending_delete_campaign_id"]
+                pending_name = st.session_state["pending_delete_campaign_name"]
+                st.warning(
+                    f"⚠️ Are you sure you want to delete **'{pending_name}'**? "
+                    "This cannot be undone."
+                )
+                col_yes, col_no = st.columns(2)
+                with col_yes:
+                    if st.button("✅ Yes, Delete", key="confirm_del_campaign"):
+                        _db.delete_campaign(pending_id)
+                        st.session_state.pop("pending_delete_campaign_id", None)
+                        st.session_state.pop("pending_delete_campaign_name", None)
+                        st.session_state["delete_success_msg"] = (
+                            f"✅ Campaign '{pending_name}' deleted."
+                        )
+                        st.rerun()
+                with col_no:
+                    if st.button("❌ Cancel", key="cancel_del_campaign"):
+                        st.session_state.pop("pending_delete_campaign_id", None)
+                        st.session_state.pop("pending_delete_campaign_name", None)
+                        st.rerun()
 
 # ── Service: Influencer Scorecard ─────────────────────────────────────────────
 elif active == "influencer_scorecard":
