@@ -3159,9 +3159,8 @@ st.markdown(
 <div class="app-footer">
   <div class="footer-brand">🔍 ATI &amp; AI — Automated Technical Insights &amp; AI</div>
   <div class="footer-links">
-    <a href="https://automatedtechnicalinsightsandai.github.io" target="_blank">🏠 Home</a>
-    <a href="https://automatedtechnicalinsightsandai.github.io/contact" target="_blank">📞 Contact</a>
-    <a href="https://automatedtechnicalinsightsandai.github.io/services" target="_blank">💼 Services</a>
+    <a href="https://calendly.com/automated-technical-insights/new-meeting" target="_blank">💬 Contact</a>
+    <a href="https://automatedtechnicalinsightsandai.github.io/services" target="_blank">📊 Services</a>
     <a href="https://www.linkedin.com/in/orlando-velazquez-borges/" target="_blank">🔗 LinkedIn</a>
   </div>
   <p style="margin:0.5rem 0 0;max-width:560px;margin-left:auto;margin-right:auto">

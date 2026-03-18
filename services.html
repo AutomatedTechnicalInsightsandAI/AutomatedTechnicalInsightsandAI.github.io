@@ -1,0 +1,456 @@
+---
+layout: default
+title: Enterprise Services — ATI & AI
+---
+
+<style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #0d2137 0%, #1a3a52 100%);
+      color: #e0e0e0;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Animated background particles ───────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background:
+        radial-gradient(circle at 15% 25%, rgba(0,217,255,0.07) 0%, transparent 40%),
+        radial-gradient(circle at 85% 75%, rgba(124,58,237,0.07) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(0,217,255,0.03) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Hero ─────────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      padding: 130px 24px 100px;
+      text-align: center;
+      background: linear-gradient(135deg, #0d2137 0%, #1a3a52 50%, #0a1f2e 100%);
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -60px; left: 50%;
+      transform: translateX(-50%);
+      width: 900px; height: 500px;
+      background: radial-gradient(ellipse, rgba(0,217,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-eyebrow {
+      display: inline-block;
+      padding: 6px 18px;
+      background: rgba(0,217,255,0.12);
+      border: 1px solid rgba(0,217,255,0.35);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #00D9FF;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 22px;
+      position: relative;
+      z-index: 1;
+      line-height: 1.15;
+    }
+    .hero h1 span {
+      background: linear-gradient(90deg, #00D9FF, #7C3AED);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: #7ecfff;
+      max-width: 680px;
+      margin: 0 auto 40px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-cta {
+      display: inline-block;
+      padding: 16px 44px;
+      background: linear-gradient(135deg, #00D9FF, #0097b2);
+      color: #0d2137;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      position: relative;
+      z-index: 1;
+      box-shadow: 0 8px 32px rgba(0,217,255,0.3);
+    }
+    .hero-cta:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 14px 40px rgba(0,217,255,0.45);
+      background: linear-gradient(135deg, #33e4ff, #00c0d8);
+    }
+
+    /* ── Services Section ─────────────────────────────────────── */
+    .services-section {
+      position: relative;
+      z-index: 1;
+      padding: 80px 24px;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+    .section-header h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .section-header p {
+      color: #7ecfff;
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 32px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* ── Service Card ─────────────────────────────────────────── */
+    .service-card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(126,207,255,0.18);
+      border-radius: 16px;
+      padding: 40px 32px;
+      transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .service-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--accent, #00D9FF);
+      border-radius: 16px 16px 0 0;
+      opacity: 0.8;
+    }
+    .service-card:hover {
+      transform: translateY(-10px);
+      border-color: rgba(126,207,255,0.42);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,217,255,0.1);
+    }
+
+    .service-icon-wrap {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: rgba(var(--accent-rgb, 0,217,255), 0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.4rem;
+      margin-bottom: 22px;
+      border: 1px solid rgba(var(--accent-rgb, 0,217,255), 0.25);
+    }
+    .service-badge {
+      display: inline-block;
+      padding: 5px 14px;
+      background: rgba(var(--accent-rgb, 0,217,255), 0.15);
+      border: 1px solid rgba(var(--accent-rgb, 0,217,255), 0.4);
+      color: var(--accent, #00D9FF);
+      font-size: 0.7rem;
+      font-weight: 700;
+      border-radius: 20px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .service-card h3 {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 14px;
+    }
+    .service-card > p {
+      color: #a8b8c8;
+      font-size: 0.95rem;
+      line-height: 1.65;
+      margin-bottom: 24px;
+      flex-grow: 1;
+    }
+    .benefits {
+      list-style: none;
+      margin-bottom: 28px;
+    }
+    .benefits li {
+      padding: 7px 0 7px 28px;
+      position: relative;
+      font-size: 0.9rem;
+      color: #c0cfd8;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .benefits li:last-child { border-bottom: none; }
+    .benefits li::before {
+      content: '✓';
+      position: absolute;
+      left: 0;
+      color: var(--accent, #00D9FF);
+      font-weight: 800;
+    }
+    .card-cta {
+      display: inline-block;
+      margin-top: auto;
+      padding: 12px 28px;
+      border: 1.5px solid var(--accent, #00D9FF);
+      color: var(--accent, #00D9FF);
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+    .card-cta:hover {
+      background: var(--accent, #00D9FF);
+      color: #0d2137;
+    }
+
+    /* ── Features Section ─────────────────────────────────────── */
+    .features-section {
+      position: relative;
+      z-index: 1;
+      background: rgba(10,31,46,0.75);
+      padding: 90px 24px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .feature-item {
+      text-align: center;
+      padding: 32px 20px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+    .feature-item:hover {
+      background: rgba(0,217,255,0.06);
+      border-color: rgba(0,217,255,0.25);
+    }
+    .feature-icon {
+      font-size: 2.4rem;
+      margin-bottom: 14px;
+    }
+    .feature-item h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .feature-item p {
+      font-size: 0.85rem;
+      color: #7a8fa0;
+      line-height: 1.5;
+    }
+
+    /* ── CTA Section ──────────────────────────────────────────── */
+    .cta-section {
+      position: relative;
+      z-index: 1;
+      background: linear-gradient(135deg, #00b8d4 0%, #7C3AED 100%);
+      padding: 90px 24px;
+      text-align: center;
+      overflow: hidden;
+    }
+    .cta-section::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+    .cta-section h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .cta-section p {
+      color: rgba(255,255,255,0.82);
+      font-size: 1.1rem;
+      margin-bottom: 36px;
+      position: relative;
+    }
+    .cta-btn {
+      display: inline-block;
+      padding: 18px 52px;
+      background: #0d2137;
+      color: #00D9FF;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+      border: 2px solid #0d2137;
+      position: relative;
+      box-shadow: 0 8px 28px rgba(13,33,55,0.4);
+    }
+    .cta-btn:hover {
+      background: transparent;
+      color: #fff;
+      border-color: #fff;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.35);
+      transform: translateY(-3px);
+    }
+
+    /* ── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .services-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+      .features-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Hero ─────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-eyebrow">ATI &amp; AI · Enterprise Solutions</div>
+    <h1>Built for <span>Scale</span>.<br>Designed to <span>Perform</span>.</h1>
+    <p>Transform your infrastructure with cutting-edge integrations, AI-powered intelligence, and payment optimization that actually works.</p>
+    <a href="https://calendly.com/automated-technical-insights/new-meeting" class="hero-cta" target="_blank" rel="noopener noreferrer">📅 Book a Strategy Session</a>
+  </section>
+
+  <!-- ── Services Grid ─────────────────────────────────────────── -->
+  <section class="services-section">
+    <div class="section-header">
+      <h2>What We Do</h2>
+      <p>Three specialized pillars engineered to modernize, secure, and intelligently augment your operations.</p>
+    </div>
+
+    <div class="services-grid">
+
+      <!-- Card 1: Merchant POS Solutions -->
+      <div class="service-card" style="--accent:#00D9FF; --accent-rgb:0,217,255;">
+        <div class="service-icon-wrap">💳</div>
+        <span class="service-badge">Operational Efficiency</span>
+        <h3>Merchant POS Solutions</h3>
+        <p>Strategic payment infrastructure for high-volume environments. We audit and optimize POS ecosystems to secure transaction flow and minimize processing friction through our partnership with <strong style="color:#cde8f7;">Beacon Payments</strong>.</p>
+        <ul class="benefits">
+          <li>99.9% uptime guarantee</li>
+          <li>Real-time transaction monitoring</li>
+          <li>Seamless payment processing</li>
+        </ul>
+        <a href="https://calendly.com/automated-technical-insights/new-meeting" class="card-cta" target="_blank" rel="noopener noreferrer">Learn More →</a>
+      </div>
+
+      <!-- Card 2: VMS Integration & Maintenance -->
+      <div class="service-card" style="--accent:#A855F7; --accent-rgb:168,85,247;">
+        <div class="service-icon-wrap">🎥</div>
+        <span class="service-badge">Infrastructure</span>
+        <h3>VMS Integration &amp; Maintenance</h3>
+        <p>Ensuring 24/7 reliability for mission-critical Video Management Systems. We specialize in synchronizing legacy hardware with modern network protocols to prevent data loss and system downtime.</p>
+        <ul class="benefits">
+          <li>24/7 system monitoring</li>
+          <li>Zero downtime migration</li>
+          <li>Legacy to modern integration</li>
+        </ul>
+        <a href="https://calendly.com/automated-technical-insights/new-meeting" class="card-cta" target="_blank" rel="noopener noreferrer">Learn More →</a>
+      </div>
+
+      <!-- Card 3: Intelligence Layer Integration -->
+      <div class="service-card" style="--accent:#F472B6; --accent-rgb:244,114,182;">
+        <div class="service-icon-wrap">🤖</div>
+        <span class="service-badge">Phase 2 Development</span>
+        <h3>Intelligence Layer Integration</h3>
+        <p>Transforming passive monitoring into proactive security. Our upcoming AI deployment model allows facilities to implement advanced computer vision and behavioral analytics onto their existing camera networks.</p>
+        <ul class="benefits">
+          <li>Computer vision AI</li>
+          <li>Behavioral analytics</li>
+          <li>Real-time threat detection</li>
+        </ul>
+        <a href="https://calendly.com/automated-technical-insights/new-meeting" class="card-cta" target="_blank" rel="noopener noreferrer">Learn More →</a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Features Section ───────────────────────────────────────── -->
+  <section class="features-section">
+    <div class="section-header">
+      <h2>Why Choose ATI?</h2>
+      <p>Enterprise-grade solutions for forward-thinking businesses</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-item">
+        <div class="feature-icon">⚡</div>
+        <h4>Lightning Fast</h4>
+        <p>Rapid implementation without business disruption</p>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🛡️</div>
+        <h4>Enterprise Security</h4>
+        <p>Bank-grade protection for mission-critical systems</p>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">📊</div>
+        <h4>Data-Driven</h4>
+        <p>Real-time insights and actionable intelligence</p>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🔄</div>
+        <h4>Seamless Integration</h4>
+        <p>Works with your existing infrastructure</p>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">👥</div>
+        <h4>Dedicated Support</h4>
+        <p>Expert team backing you every step of the way</p>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🚀</div>
+        <h4>Future-Ready</h4>
+        <p>Built for tomorrow's challenges, deployed today</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA Section ────────────────────────────────────────────── -->
+  <section class="cta-section">
+    <h2>Ready to Transform Your Infrastructure?</h2>
+    <p>Schedule a free 30-minute consultation with our team</p>
+    <a href="https://calendly.com/automated-technical-insights/new-meeting" class="cta-btn" target="_blank" rel="noopener noreferrer">Book Your Session Today</a>
+  </section>
+
+</body>
+</html>
